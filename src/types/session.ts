@@ -1,10 +1,10 @@
-﻿export type ViewMode = 'lateral' | 'frontal';
+﻿export type ViewMode = 'lateral' | 'frontal' | 'dual';
 export type CalibrationType = 'line' | 'object' | 'none';
 export type QualityLevel = 'high' | 'medium' | 'low';
 export type FootSide = 'L' | 'R';
 
 export type EventSource = 'auto' | 'manual';
-export type EventType = 'heel_strike';
+export type EventType = 'heel_strike' | 'toe_off' | 'foot_flat' | 'heel_off' | 'max_knee_flexion' | 'max_hip_extension';
 
 export interface CaptureSettings {
   viewMode: ViewMode;
@@ -51,6 +51,36 @@ export interface SessionMetrics {
   stanceTimeLeft: number | null;
   stanceTimeRight: number | null;
   stanceAsymmetryPct: number | null;
+}
+
+export interface AdvancedMetrics extends SessionMetrics {
+  // Variabilidad temporal
+  stepTimeVariability: number | null; // CV de intervalos entre pasos
+  doubleSupport: number | null; // Tiempo de doble apoyo
+  strideLength: number | null; // Longitud de zancada
+
+  // Métricas espaciales
+  stepWidth: number | null; // Ancho de base
+  footAngle: number | null; // Ángulo del pie al contacto
+
+  // Análisis de fase
+  swingPhase: number | null; // % de ciclo en swing
+  stancePhase: number | null; // % de ciclo en stance
+
+  // Smoothness y estabilidad
+  harmonicRatio: number | null; // Suavidad del movimiento
+  accelerationVariability: number | null;
+  gaitSymmetryIndex: number | null; // Índice de simetría general
+
+  // Ángulos articulares promedio
+  leftKneeAngle: number | null;
+  rightKneeAngle: number | null;
+  leftHipAngle: number | null;
+  rightHipAngle: number | null;
+
+  // Métricas de estabilidad
+  centerOfMassVariability: number | null;
+  lateralStability: number | null;
 }
 
 export type PatternStatus =

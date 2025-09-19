@@ -6,6 +6,7 @@ import { CaptureScreen } from './screens/CaptureScreen.tsx';
 import { EventsScreen } from './screens/EventsScreen.tsx';
 import { ResultsScreen } from './screens/ResultsScreen.tsx';
 import { ReportScreen } from './screens/ReportScreen.tsx';
+import { LongitudinalScreen } from './screens/LongitudinalScreen.tsx';
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/events" element={<EventsScreen />} />
         <Route path="/results" element={<ResultsScreen />} />
         <Route path="/report" element={<ReportScreen />} />
+        <Route path="/longitudinal" element={<LongitudinalScreen />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </div>

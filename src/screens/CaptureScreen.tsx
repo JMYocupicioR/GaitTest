@@ -1,9 +1,11 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMediaRecorder } from '../hooks/useMediaRecorder.ts';
+import { usePoseEstimation } from '../hooks/usePoseEstimation.ts';
 import { useSessionStore } from '../state/sessionStore.ts';
 import { assessQuality } from '../lib/quality.ts';
 import type { QualityLevel } from '../types/session.ts';
+import type { HeelStrikeEvent, PoseFrame } from '../lib/poseEstimation.ts';
 
 export const CaptureScreen = () => {
   const navigate = useNavigate();
@@ -13,18 +15,63 @@ export const CaptureScreen = () => {
   const setVideoBlob = useSessionStore((state) => state.setVideoBlob);
   const updateQuality = useSessionStore((state) => state.updateQuality);
   const setDuration = useSessionStore((state) => state.setDuration);
+  const addHeelStrike = useSessionStore((state) => state.addHeelStrike);
   const captureSettings = useSessionStore((state) => state.session.captureSettings);
   const [lighting, setLighting] = useState<QualityLevel>('medium');
   const [subjectCentered, setSubjectCentered] = useState(true);
+  const [poseFrames, setPoseFrames] = useState<PoseFrame[]>([]);
+  const [autoDetectionEnabled, setAutoDetectionEnabled] = useState(true);
+  const [detectedEvents, setDetectedEvents] = useState(0);
 
   const recorder = useMediaRecorder({ targetFps: captureSettings.targetFps, videoRef });
 
+  // Pose estimation hooks
+  const poseEstimation = usePoseEstimation({
+    onHeelStrike: (event: HeelStrikeEvent) => {
+      if (autoDetectionEnabled && recorder.state === 'recording') {
+        addHeelStrike(event.foot, event.timestamp, 'auto');
+        setDetectedEvents(prev => prev + 1);
+      }
+    },
+    onPoseDetected: (frame: PoseFrame) => {
+      if (recorder.state === 'recording') {
+        setPoseFrames(prev => [...prev.slice(-50), frame]); // Keep last 50 frames
+      }
+    }
+  });
+
   useEffect(() => {
-    recorder.startCamera();
+    const initializeCapture = async () => {
+      try {
+        await recorder.startCamera();
+
+        // Initialize pose estimation when video is ready
+        if (videoRef.current && autoDetectionEnabled) {
+          await poseEstimation.initialize(videoRef.current);
+        }
+      } catch (error) {
+        console.error('Error initializing capture:', error);
+      }
+    };
+
+    initializeCapture();
+
     return () => {
       recorder.stopCamera();
+      poseEstimation.cleanup();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Start/stop pose estimation with recording
+  useEffect(() => {
+    if (recorder.state === 'recording' && autoDetectionEnabled) {
+      poseEstimation.startAnalysis();
+      setDetectedEvents(0);
+      setPoseFrames([]);
+    } else if (recorder.state === 'complete') {
+      poseEstimation.stopAnalysis();
+    }
+  }, [recorder.state, autoDetectionEnabled, poseEstimation]);
 
   useEffect(() => {
     if (!recorder.recordedBlob) {
@@ -97,8 +144,26 @@ export const CaptureScreen = () => {
           <span>La persona se mantuvo dentro del encuadre durante todo el clip.</span>
         </label>
 
+        <label style={{ display: 'flex', gap: '0.5rem' }}>
+          <input
+            type="checkbox"
+            checked={autoDetectionEnabled}
+            onChange={(event) => setAutoDetectionEnabled(event.target.checked)}
+          />
+          <span>Detección automática de eventos con IA (recomendado)</span>
+        </label>
+
         {recorder.durationSeconds && (
-          <p className="helper-text">Duración estimada: {recorder.durationSeconds.toFixed(1)} s · FPS detectado: {recorder.fpsDetected?.toFixed?.(0) ?? '—'}</p>
+          <p className="helper-text">
+            Duración estimada: {recorder.durationSeconds.toFixed(1)} s · FPS detectado: {recorder.fpsDetected?.toFixed?.(0) ?? '—'}
+            {autoDetectionEnabled && ` · Eventos detectados: ${detectedEvents}`}
+          </p>
+        )}
+
+        {autoDetectionEnabled && poseFrames.length > 0 && (
+          <p className="helper-text" style={{ color: '#059669' }}>
+            ✓ Pose estimation activa - {poseFrames.length} frames analizados
+          </p>
         )}
       </section>
 

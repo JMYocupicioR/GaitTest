@@ -8,10 +8,13 @@ import type {
   ReportSummary,
   SessionData,
   SessionMetrics,
+  AdvancedMetrics,
 } from '../types/session.ts';
 import { computeMetrics } from '../lib/metrics.ts';
 import { evaluatePatterns } from '../lib/patterns.ts';
 import { buildReport } from '../lib/report.ts';
+import { EnhancedGaitAnalyzer } from '../lib/enhancedAnalysis.ts';
+import type { PoseFrame } from '../lib/poseEstimation.ts';
 
 const initialMetrics = (): SessionMetrics => ({
   durationSeconds: null,
@@ -53,10 +56,18 @@ const createEmptySession = (): SessionData => ({
   },
   patient: undefined,
   videoBlob: undefined,
+  // Enhanced analysis data
+  advancedMetrics: undefined,
+  poseFrames: [],
+  enhancedAnalysisResult: undefined,
 });
 
 interface SessionStore {
-  session: SessionData;
+  session: SessionData & {
+    advancedMetrics?: AdvancedMetrics;
+    poseFrames: PoseFrame[];
+    enhancedAnalysisResult?: unknown;
+  };
   resetSession: () => void;
   setCaptureSettings: (updates: Partial<CaptureSettings>) => void;
   updateQuality: (updates: Partial<CaptureQuality>) => void;
@@ -65,10 +76,12 @@ interface SessionStore {
   updateEvent: (eventId: string, updates: Partial<GaitEvent>) => void;
   removeEvent: (eventId: string) => void;
   setObservations: (updates: Partial<ObservationChecklist>) => void;
-  finalizeAnalysis: () => void;
+  finalizeAnalysis: () => Promise<void>;
   setVideoBlob: (blob: Blob | undefined) => void;
   setPatientInfo: (updates: Partial<NonNullable<SessionData['patient']>>) => void;
   setReportSummary: (updates: Partial<ReportSummary>) => void;
+  setPoseFrames: (frames: PoseFrame[]) => void;
+  performEnhancedAnalysis: () => Promise<void>;
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -148,9 +161,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       },
     })),
 
-  finalizeAnalysis: () => {
+  finalizeAnalysis: async () => {
     const { session } = get();
 
+    // Basic analysis (for backward compatibility)
     const metrics = computeMetrics({
       events: session.events,
       distanceMeters: session.captureSettings.distanceMeters,
@@ -170,15 +184,94 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       quality: session.quality,
     });
 
-    set(({ session: current }) => ({
-      session: {
-        ...current,
-        metrics,
-        patternFlags,
-        report,
-      },
-    }));
+    // Enhanced analysis if pose data is available
+    if (session.poseFrames && session.poseFrames.length > 0) {
+      try {
+        const analyzer = new EnhancedGaitAnalyzer();
+        const enhancedResult = await analyzer.performCompleteAnalysis({
+          events: session.events,
+          captureSettings: session.captureSettings,
+          quality: session.quality,
+          observations: session.observations,
+          poseFrames: session.poseFrames,
+        });
+
+        const enhancedReport = analyzer.generateEnhancedReport(enhancedResult);
+
+        set(({ session: current }) => ({
+          session: {
+            ...current,
+            metrics,
+            patternFlags: enhancedResult.combinedPatterns,
+            report: {
+              ...report,
+              notes: enhancedReport.summary,
+            },
+            advancedMetrics: enhancedResult.advancedMetrics,
+            enhancedAnalysisResult: enhancedResult,
+          },
+        }));
+      } catch (error) {
+        console.error('Enhanced analysis failed, falling back to basic analysis:', error);
+
+        set(({ session: current }) => ({
+          session: {
+            ...current,
+            metrics,
+            patternFlags,
+            report,
+          },
+        }));
+      }
+    } else {
+      set(({ session: current }) => ({
+        session: {
+          ...current,
+          metrics,
+          patternFlags,
+          report,
+        },
+      }));
+    }
   },
+
+  performEnhancedAnalysis: async () => {
+    const { session } = get();
+
+    if (!session.poseFrames || session.poseFrames.length === 0) {
+      console.warn('No pose frames available for enhanced analysis');
+      return;
+    }
+
+    try {
+      const analyzer = new EnhancedGaitAnalyzer();
+      const result = await analyzer.performCompleteAnalysis({
+        events: session.events,
+        captureSettings: session.captureSettings,
+        quality: session.quality,
+        observations: session.observations,
+        poseFrames: session.poseFrames,
+      });
+
+      set(({ session: current }) => ({
+        session: {
+          ...current,
+          advancedMetrics: result.advancedMetrics,
+          enhancedAnalysisResult: result,
+        },
+      }));
+    } catch (error) {
+      console.error('Enhanced analysis failed:', error);
+    }
+  },
+
+  setPoseFrames: (frames) =>
+    set(({ session }) => ({
+      session: {
+        ...session,
+        poseFrames: frames,
+      },
+    })),
 
   setVideoBlob: (blob) =>
     set(({ session }) => ({

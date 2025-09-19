@@ -4,7 +4,8 @@ import { useSessionStore } from '../state/sessionStore.ts';
 
 const VIEW_OPTIONS = [
   { id: 'lateral', label: 'Vista lateral (recomendada)', available: true },
-  { id: 'frontal', label: 'Vista frontal (próximamente)', available: false },
+  { id: 'frontal', label: 'Vista frontal (análisis avanzado)', available: true },
+  { id: 'dual', label: 'Análisis dual (próximamente)', available: false },
 ] as const;
 
 type ViewOptionId = (typeof VIEW_OPTIONS)[number]['id'];
@@ -60,7 +61,7 @@ export const StartScreen = () => {
             </button>
           ))}
         </div>
-        <p className="helper-text">La vista frontal se activará en la versión 0.2. Por ahora nos centramos en lateral.</p>
+        <p className="helper-text">Vista lateral: análisis sagital básico. Vista frontal: análisis coronal avanzado con compensaciones.</p>
       </section>
 
       <section className="card">
@@ -77,6 +78,9 @@ export const StartScreen = () => {
       </section>
 
       <div className="button-row">
+        <button type="button" className="secondary-button" onClick={() => navigate('/longitudinal')}>
+          Análisis longitudinal
+        </button>
         <button type="button" className="primary-button" disabled={!consent} onClick={handleContinue}>
           Continuar a calibración
         </button>
