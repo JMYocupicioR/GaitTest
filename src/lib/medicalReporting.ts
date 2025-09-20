@@ -1,4 +1,4 @@
-import type { AdvancedMetrics } from '../types/session.ts';
+import type { AdvancedMetrics, OGSAnalysis } from '../types/session.ts';
 import type { KinematicSummary } from './kinematicAnalysis.ts';
 import type { CompensationAnalysis } from './compensationDetection.ts';
 import type { FrontalMetrics } from './frontalAnalysis.ts';
@@ -13,6 +13,7 @@ export interface MedicalReport {
   kinematicAnalysis: KinematicAnalysisSection;
   compensationAnalysis: CompensationAnalysisSection;
   pathologyAnalysis: PathologyAnalysis;
+  ogsAnalysis: OGSAnalysisSection;
   functionalAssessment: FunctionalAssessment;
   clinicalImpression: ClinicalImpression;
   recommendations: Recommendations;
@@ -96,6 +97,26 @@ export interface CompensationAnalysisSection {
   interventionPriorities: string[];
 }
 
+export interface OGSAnalysisSection {
+  leftTotal: number | null;
+  rightTotal: number | null;
+  asymmetryIndex: number | null;
+  qualityIndex: number | null;
+  overallInterpretation: string;
+  specificFindings: OGSFinding[];
+  correlationSummary: string;
+  reliabilityNotes: string;
+  clinicalRecommendations: string[];
+}
+
+export interface OGSFinding {
+  phase: string;
+  leftScore: number | null;
+  rightScore: number | null;
+  interpretation: string;
+  clinicalSignificance: 'normal' | 'mild' | 'moderate' | 'severe';
+}
+
 export interface FunctionalAssessment {
   mobilityLevel: 'independent' | 'assisted' | 'dependent';
   fallRisk: 'low' | 'moderate' | 'high' | 'very_high';
@@ -147,6 +168,7 @@ export class MedicalReportGenerator {
     cycleAnalysis?: GaitCycleComparison,
     gaitCycles?: any[],
     kinematics?: any,
+    ogsAnalysis?: OGSAnalysis,
     patientInfo: Partial<ReportHeader['patientInfo']> = {}
   ): MedicalReport {
 
@@ -163,9 +185,12 @@ export class MedicalReportGenerator {
       kinematics
     );
 
+    // Generate OGS analysis section
+    const ogsAnalysisSection = this.generateOGSAnalysis(ogsAnalysis);
+
     const functionalAssessment = this.generateFunctionalAssessment(basicMetrics, compensationAnalysis);
-    const clinicalImpression = this.generateClinicalImpression(clinicalFindings, compensationAnalysis, pathologyAnalysis);
-    const recommendations = this.generateRecommendations(clinicalImpression, functionalAssessment, compensationAnalysis, pathologyAnalysis);
+    const clinicalImpression = this.generateClinicalImpression(clinicalFindings, compensationAnalysis, pathologyAnalysis, ogsAnalysis);
+    const recommendations = this.generateRecommendations(clinicalImpression, functionalAssessment, compensationAnalysis, pathologyAnalysis, ogsAnalysis);
     const followUp = this.generateFollowUpPlan(clinicalImpression, recommendations);
 
     return {
@@ -174,6 +199,7 @@ export class MedicalReportGenerator {
       kinematicAnalysis,
       compensationAnalysis: compensationAnalysisSection,
       pathologyAnalysis,
+      ogsAnalysis: ogsAnalysisSection,
       functionalAssessment,
       clinicalImpression,
       recommendations,
@@ -443,18 +469,131 @@ export class MedicalReportGenerator {
     );
   }
 
+  private generateOGSAnalysis(ogsAnalysis?: OGSAnalysis): OGSAnalysisSection {
+    if (!ogsAnalysis) {
+      return {
+        leftTotal: null,
+        rightTotal: null,
+        asymmetryIndex: null,
+        qualityIndex: null,
+        overallInterpretation: 'Evaluación OGS no realizada',
+        specificFindings: [],
+        correlationSummary: 'No disponible',
+        reliabilityNotes: 'La evaluación OGS no fue completada durante esta sesión',
+        clinicalRecommendations: ['Considerar evaluación OGS en futuras sesiones para análisis cualitativo complementario']
+      };
+    }
+
+    // Generar hallazgos específicos por fase
+    const specificFindings: OGSFinding[] = [];
+    if (ogsAnalysis.leftScore && ogsAnalysis.rightScore) {
+      const phases = [
+        { key: 'initialFootContact', label: 'Contacto Inicial' },
+        { key: 'loadingResponse', label: 'Respuesta de Carga' },
+        { key: 'midStance', label: 'Apoyo Medio' },
+        { key: 'terminalStance', label: 'Apoyo Terminal' },
+        { key: 'preSwing', label: 'Pre-Balanceo' },
+        { key: 'initialSwing', label: 'Balanceo Inicial' },
+        { key: 'midSwing', label: 'Balanceo Medio' },
+        { key: 'terminalSwing', label: 'Balanceo Terminal' }
+      ] as const;
+
+      phases.forEach(phase => {
+        const leftScore = ogsAnalysis.leftScore![phase.key as keyof typeof ogsAnalysis.leftScore];
+        const rightScore = ogsAnalysis.rightScore![phase.key as keyof typeof ogsAnalysis.rightScore];
+
+        let interpretation = '';
+        let significance: 'normal' | 'mild' | 'moderate' | 'severe' = 'normal';
+
+        const avgScore = ((leftScore ?? 0) + (rightScore ?? 0)) / 2;
+        if (avgScore >= 2.5) {
+          interpretation = 'Patrón normal bilateral';
+          significance = 'normal';
+        } else if (avgScore >= 1.5) {
+          interpretation = 'Alteraciones leves observadas';
+          significance = 'mild';
+        } else if (avgScore >= 0.5) {
+          interpretation = 'Alteraciones moderadas que requieren atención';
+          significance = 'moderate';
+        } else {
+          interpretation = 'Alteraciones severas detectadas';
+          significance = 'severe';
+        }
+
+        if (leftScore !== null && rightScore !== null && Math.abs(leftScore - rightScore) >= 2) {
+          interpretation += ` (asimetría significativa: ${leftScore} vs ${rightScore})`;
+        }
+
+        specificFindings.push({
+          phase: phase.label,
+          leftScore,
+          rightScore,
+          interpretation,
+          clinicalSignificance: significance
+        });
+      });
+    }
+
+    // Interpretación general
+    let overallInterpretation = '';
+    if (ogsAnalysis.qualityIndex !== null) {
+      if (ogsAnalysis.qualityIndex >= 75) {
+        overallInterpretation = 'Evaluación OGS indica patrón de marcha dentro de parámetros normales';
+      } else if (ogsAnalysis.qualityIndex >= 50) {
+        overallInterpretation = 'Evaluación OGS muestra alteraciones moderadas del patrón de marcha';
+      } else if (ogsAnalysis.qualityIndex >= 25) {
+        overallInterpretation = 'Evaluación OGS revela alteraciones significativas que requieren intervención';
+      } else {
+        overallInterpretation = 'Evaluación OGS indica alteraciones severas con impacto funcional considerable';
+      }
+
+      if (ogsAnalysis.asymmetryIndex !== null && ogsAnalysis.asymmetryIndex > 25) {
+        overallInterpretation += `. Asimetría bilateral marcada (${ogsAnalysis.asymmetryIndex.toFixed(1)}%)`;
+      }
+    }
+
+    // Resumen de correlaciones
+    let correlationSummary = 'No se identificaron correlaciones con datos instrumentales';
+    if (ogsAnalysis.correlationWithKinematics.length > 0) {
+      const highSigCorrelations = ogsAnalysis.correlationWithKinematics.filter(c => c.significance === 'high');
+      if (highSigCorrelations.length > 0) {
+        correlationSummary = `Se identificaron ${highSigCorrelations.length} correlaciones significativas entre evaluación OGS y análisis instrumental`;
+      } else {
+        correlationSummary = `Se identificaron ${ogsAnalysis.correlationWithKinematics.length} correlaciones de significancia variable con análisis instrumental`;
+      }
+    }
+
+    // Notas de fiabilidad
+    const reliabilityNotes = 'La evaluación OGS presenta mayor fiabilidad para articulaciones distales (rodilla y tobillo). Las mediciones de cadera y pelvis deben interpretarse con precaución. La evaluación es observador-dependiente y se recomienda entrenamiento específico.';
+
+    return {
+      leftTotal: ogsAnalysis.leftTotal,
+      rightTotal: ogsAnalysis.rightTotal,
+      asymmetryIndex: ogsAnalysis.asymmetryIndex,
+      qualityIndex: ogsAnalysis.qualityIndex,
+      overallInterpretation,
+      specificFindings,
+      correlationSummary,
+      reliabilityNotes,
+      clinicalRecommendations: ogsAnalysis.recommendations
+    };
+  }
+
   private generateClinicalImpression(
     findings: ClinicalFindings,
     compensationAnalysis?: CompensationAnalysis,
-    pathologyAnalysis?: PathologyAnalysis
+    pathologyAnalysis?: PathologyAnalysis,
+    ogsAnalysis?: OGSAnalysis
   ): ClinicalImpression {
 
-    // Primary diagnosis based on findings and pathology analysis
+    // Primary diagnosis based on findings, pathology analysis, and OGS
     let primaryDiagnosis = 'Patrón de marcha dentro de límites normales';
 
     if (pathologyAnalysis && pathologyAnalysis.primaryFindings.length > 0) {
       const topFinding = pathologyAnalysis.primaryFindings[0];
       primaryDiagnosis = `Patrón compatible con ${topFinding.condition} (confianza: ${(topFinding.confidence * 100).toFixed(0)}%)`;
+    } else if (ogsAnalysis && ogsAnalysis.qualityIndex !== null && ogsAnalysis.qualityIndex < 50) {
+      primaryDiagnosis = `Alteración del patrón de marcha según evaluación observacional (OGS: ${ogsAnalysis.qualityIndex.toFixed(0)}%)`;
     } else if (findings.criticalFindings.length > 0) {
       primaryDiagnosis = 'Alteración significativa del patrón de marcha';
     } else if (findings.primaryFindings.length > 0) {
@@ -530,7 +669,8 @@ export class MedicalReportGenerator {
     impression: ClinicalImpression,
     functional: FunctionalAssessment,
     compensationAnalysis?: CompensationAnalysis,
-    pathologyAnalysis?: PathologyAnalysis
+    pathologyAnalysis?: PathologyAnalysis,
+    ogsAnalysis?: OGSAnalysis
   ): Recommendations {
 
     const immediate: RecommendationItem[] = [];
@@ -598,6 +738,40 @@ export class MedicalReportGenerator {
           timeframe: '4-8 semanas',
           provider: 'Fisioterapeuta'
         });
+      });
+    }
+
+    // OGS-specific recommendations
+    if (ogsAnalysis && ogsAnalysis.clinicalRecommendations.length > 0) {
+      ogsAnalysis.clinicalRecommendations.forEach(rec => {
+        if (rec.includes('urgente') || rec.includes('inmediata')) {
+          immediate.push({
+            category: 'medical',
+            intervention: rec,
+            rationale: 'Basado en evaluación observacional OGS',
+            expectedOutcome: 'Mejora del patrón observacional',
+            timeframe: 'Inmediato',
+            provider: 'Especialista en marcha'
+          });
+        } else if (rec.includes('seguimiento') || rec.includes('reevaluación')) {
+          longTerm.push({
+            category: 'monitoring',
+            intervention: rec,
+            rationale: 'Monitoreo observacional sistemático',
+            expectedOutcome: 'Documentación objetiva del progreso',
+            timeframe: '4-8 semanas',
+            provider: 'Fisioterapeuta entrenado en OGS'
+          });
+        } else {
+          shortTerm.push({
+            category: 'therapy',
+            intervention: rec,
+            rationale: 'Intervención dirigida según hallazgos OGS',
+            expectedOutcome: 'Mejora en puntuación observacional',
+            timeframe: '2-6 semanas',
+            provider: 'Fisioterapeuta especializado'
+          });
+        }
       });
     }
 
@@ -790,6 +964,27 @@ export class MedicalReportGenerator {
           formatted += `  - Evidencia: ${finding.evidence.join(', ')}\n`;
         }
       });
+      formatted += '\n';
+    }
+
+    // OGS Analysis
+    if (report.ogsAnalysis.leftTotal !== null && report.ogsAnalysis.rightTotal !== null) {
+      formatted += '### Escala de Marcha Observacional (OGS)\n';
+      formatted += `**Puntuación Total:** Izquierda ${report.ogsAnalysis.leftTotal}/24, Derecha ${report.ogsAnalysis.rightTotal}/24\n`;
+      if (report.ogsAnalysis.qualityIndex !== null) {
+        formatted += `**Índice de Calidad:** ${report.ogsAnalysis.qualityIndex.toFixed(1)}%\n`;
+      }
+      if (report.ogsAnalysis.asymmetryIndex !== null) {
+        formatted += `**Asimetría:** ${report.ogsAnalysis.asymmetryIndex.toFixed(1)}%\n`;
+      }
+      formatted += `**Interpretación:** ${report.ogsAnalysis.overallInterpretation}\n`;
+
+      if (report.ogsAnalysis.specificFindings.length > 0) {
+        const severeFindings = report.ogsAnalysis.specificFindings.filter(f => f.clinicalSignificance === 'severe');
+        if (severeFindings.length > 0) {
+          formatted += `**Hallazgos Críticos:** ${severeFindings.map(f => f.phase).join(', ')}\n`;
+        }
+      }
       formatted += '\n';
     }
 

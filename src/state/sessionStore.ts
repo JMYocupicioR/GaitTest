@@ -9,11 +9,13 @@ import type {
   SessionData,
   SessionMetrics,
   AdvancedMetrics,
+  OGSScore,
 } from '../types/session.ts';
 import { computeMetrics } from '../lib/metrics.ts';
 import { evaluatePatterns } from '../lib/patterns.ts';
 import { buildReport } from '../lib/report.ts';
 import { EnhancedGaitAnalyzer } from '../lib/enhancedAnalysis.ts';
+import { ogsAnalyzer } from '../lib/ogsAnalysis.ts';
 import type { PoseFrame } from '../lib/poseEstimation.ts';
 
 const initialMetrics = (): SessionMetrics => ({
@@ -54,6 +56,7 @@ const createEmptySession = (): SessionData => ({
     notes: '',
     pdfUrl: null,
   },
+  ogs: null,
   patient: undefined,
   videoBlob: undefined,
   // Enhanced analysis data
@@ -76,6 +79,7 @@ interface SessionStore {
   updateEvent: (eventId: string, updates: Partial<GaitEvent>) => void;
   removeEvent: (eventId: string) => void;
   setObservations: (updates: Partial<ObservationChecklist>) => void;
+  setOGSScore: (leftScore: OGSScore, rightScore: OGSScore) => void;
   finalizeAnalysis: () => Promise<void>;
   setVideoBlob: (blob: Blob | undefined) => void;
   setPatientInfo: (updates: Partial<NonNullable<SessionData['patient']>>) => void;
@@ -161,6 +165,26 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       },
     })),
 
+  setOGSScore: (leftScore, rightScore) =>
+    set(({ session }) => {
+      // Realizar análisis completo de OGS con correlaciones
+      const ogsAnalysis = ogsAnalyzer.calculateOGSFinalScore(
+        leftScore,
+        rightScore,
+        session,
+        session.advancedMetrics,
+        undefined, // kinematics - se puede agregar si está disponible
+        undefined  // compensations - se puede agregar si está disponible
+      );
+
+      return {
+        session: {
+          ...session,
+          ogs: ogsAnalysis,
+        },
+      };
+    }),
+
   finalizeAnalysis: async () => {
     const { session } = get();
 
@@ -198,6 +222,19 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
         const enhancedReport = analyzer.generateEnhancedReport(enhancedResult);
 
+        // Update OGS analysis with enhanced data if available
+        let updatedOGS = session.ogs;
+        if (session.ogs && enhancedResult.advancedMetrics) {
+          updatedOGS = ogsAnalyzer.calculateOGSFinalScore(
+            session.ogs.leftScore!,
+            session.ogs.rightScore!,
+            session,
+            enhancedResult.advancedMetrics,
+            enhancedResult.kinematicSummary,
+            enhancedResult.compensationAnalysis
+          );
+        }
+
         set(({ session: current }) => ({
           session: {
             ...current,
@@ -209,6 +246,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             },
             advancedMetrics: enhancedResult.advancedMetrics,
             enhancedAnalysisResult: enhancedResult,
+            ogs: updatedOGS,
           },
         }));
       } catch (error) {

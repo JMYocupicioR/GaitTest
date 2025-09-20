@@ -1,9 +1,11 @@
-﻿import type { ObservationChecklist } from '../types/session.ts';
+﻿import type { ObservationChecklist, OGSScore, OGSItemScore, FootSide } from '../types/session.ts';
 import type { ChangeEvent } from 'react';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../state/sessionStore.ts';
 import { formatSeconds } from '../lib/format.ts';
+import { OGSInput } from '../components/OGSInput.tsx';
+import { DEFAULT_OGS_SCORE } from '../types/session.ts';
 
 const observationFields = [
   { id: 'limitedStepLength', label: 'Longitud de paso visiblemente reducida contralateral' },
@@ -25,7 +27,19 @@ export const EventsScreen = () => {
   const updateEvent = useSessionStore((state) => state.updateEvent);
   const removeEvent = useSessionStore((state) => state.removeEvent);
   const setObservations = useSessionStore((state) => state.setObservations);
+  const setOGSScore = useSessionStore((state) => state.setOGSScore);
   const finalizeAnalysis = useSessionStore((state) => state.finalizeAnalysis);
+
+  // Estado local para OGS
+  const [ogsScores, setOgsScores] = useState<{
+    left: OGSScore | null;
+    right: OGSScore | null;
+  }>({
+    left: session.ogs?.leftScore || { ...DEFAULT_OGS_SCORE },
+    right: session.ogs?.rightScore || { ...DEFAULT_OGS_SCORE },
+  });
+
+  const [showOGS, setShowOGS] = useState(false);
 
   const videoUrl = useMemo(() => {
     if (!session.videoBlob) {
@@ -61,9 +75,24 @@ export const EventsScreen = () => {
     setObservations(update);
   };
 
+  const handleOGSChange = (foot: FootSide, item: keyof OGSScore, score: OGSItemScore | null) => {
+    const footKey = foot === 'L' ? 'left' : 'right';
+    setOgsScores(prev => ({
+      ...prev,
+      [footKey]: {
+        ...prev[footKey],
+        [item]: score,
+      },
+    }));
+  };
+
   const canContinue = session.events.length >= 4;
 
   const handleContinue = () => {
+    // Guardar puntuaciones OGS antes de continuar
+    if (ogsScores.left && ogsScores.right) {
+      setOGSScore(ogsScores.left, ogsScores.right);
+    }
     finalizeAnalysis();
     navigate('/results');
   };
@@ -72,8 +101,8 @@ export const EventsScreen = () => {
     <div className="page">
       <span className="step-indicator">Paso 4 · Revisión</span>
       <header className="page-header">
-        <h1>Anota eventos clave</h1>
-        <p>Revisa el clip y marca los golpes de talón. Puedes ajustar los tiempos manualmente si es necesario.</p>
+        <h1>Revisión y evaluación observacional</h1>
+        <p>Revisa el clip, marca eventos clave y completa la evaluación observacional usando la Escala OGS.</p>
       </header>
 
       <section className="card video-shell">
@@ -133,6 +162,98 @@ export const EventsScreen = () => {
             </label>
           ))}
         </div>
+      </section>
+
+      <section className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2>Escala de Marcha Observacional (OGS)</h2>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setShowOGS(!showOGS)}
+            style={{ fontSize: '0.9rem' }}
+          >
+            {showOGS ? 'Ocultar OGS' : 'Mostrar OGS'}
+          </button>
+        </div>
+
+        {!showOGS && (
+          <div style={{
+            padding: '1rem',
+            backgroundColor: '#f9fafb',
+            borderRadius: '8px',
+            border: '1px dashed #d1d5db',
+            textAlign: 'center'
+          }}>
+            <p style={{ color: '#6b7280', margin: 0 }}>
+              Evaluación cualitativa opcional de 8 fases del ciclo de marcha por extremidad.
+              <br />
+              <span style={{ fontSize: '0.9rem' }}>
+                Puntuación: -1 (muy alterado) a 3 (normal). Total máximo: 24 puntos por pierna.
+              </span>
+            </p>
+          </div>
+        )}
+
+        {showOGS && (
+          <>
+            <div style={{
+              marginBottom: '1rem',
+              padding: '0.75rem',
+              backgroundColor: '#eff6ff',
+              borderRadius: '6px',
+              border: '1px solid #bfdbfe'
+            }}>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#1e40af' }}>
+                <strong>Instrucciones:</strong> Observa cada fase del ciclo de marcha y puntúa de -1 (muy alterado)
+                a 3 (normal). La evaluación es más confiable para articulaciones distales (rodilla y tobillo).
+              </p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              <OGSInput
+                foot="L"
+                score={ogsScores.left}
+                onChange={handleOGSChange}
+              />
+              <OGSInput
+                foot="R"
+                score={ogsScores.right}
+                onChange={handleOGSChange}
+              />
+            </div>
+
+            {ogsScores.left && ogsScores.right && (
+              <div style={{
+                marginTop: '1rem',
+                padding: '1rem',
+                backgroundColor: '#f0fdf4',
+                borderRadius: '8px',
+                border: '1px solid #bbf7d0'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{ fontWeight: 'bold', color: '#15803d' }}>Resumen OGS:</span>
+                    <span style={{ marginLeft: '0.5rem', color: '#374151' }}>
+                      Izquierda: {Object.values(ogsScores.left).reduce((sum, score) => sum + (score ?? 0), 0)}/24
+                    </span>
+                    <span style={{ marginLeft: '1rem', color: '#374151' }}>
+                      Derecha: {Object.values(ogsScores.right).reduce((sum, score) => sum + (score ?? 0), 0)}/24
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                    Completado: {
+                      Math.round((
+                        (Object.values(ogsScores.left).filter(s => s !== null).length +
+                         Object.values(ogsScores.right).filter(s => s !== null).length) / 16
+                      ) * 100)
+                    }%
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </section>
 
       <div className="button-row">

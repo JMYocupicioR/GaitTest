@@ -1,6 +1,7 @@
 ﻿import { useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../state/sessionStore.ts';
 import { formatCadence, formatMeters, formatMetersPerSecond, formatPercentage, formatSeconds } from '../lib/format.ts';
+import { OGSValidationPanel } from '../components/OGSValidationPanel.tsx';
 
 export const ResultsScreen = () => {
   const navigate = useNavigate();
@@ -79,6 +80,16 @@ export const ResultsScreen = () => {
         </span>
         <p>{session.report.notes || 'Sin notas adicionales.'}</p>
       </section>
+
+      {/* Panel de validación OGS si está disponible */}
+      {session.ogs && session.ogs.leftScore && session.ogs.rightScore && (
+        <OGSValidationPanel
+          ogsAnalysis={session.ogs}
+          advancedMetrics={session.advancedMetrics}
+          kinematics={session.enhancedAnalysisResult?.kinematicSummary}
+          compensations={session.enhancedAnalysisResult?.compensationAnalysis}
+        />
+      )}
 
       <div className="button-row">
         <button type="button" className="secondary-button" onClick={() => navigate('/events')}>

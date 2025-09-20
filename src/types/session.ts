@@ -40,6 +40,43 @@ export interface ObservationChecklist {
   irregularTiming: boolean;
 }
 
+// Tipo para las puntuaciones de cada ítem de la OGS (-1 a 3)
+export type OGSItemScore = -1 | 0 | 1 | 2 | 3;
+
+// Interfaz para almacenar las puntuaciones OGS de una pierna
+export interface OGSScore {
+  initialFootContact: OGSItemScore | null;
+  loadingResponse: OGSItemScore | null;
+  midStance: OGSItemScore | null;
+  terminalStance: OGSItemScore | null;
+  preSwing: OGSItemScore | null;
+  initialSwing: OGSItemScore | null;
+  midSwing: OGSItemScore | null;
+  terminalSwing: OGSItemScore | null;
+}
+
+// Análisis completo de la OGS
+export interface OGSAnalysis {
+  leftScore: OGSScore | null;
+  rightScore: OGSScore | null;
+  leftTotal: number | null;
+  rightTotal: number | null;
+  asymmetryIndex: number | null;
+  qualityIndex: number | null;
+  interpretations: string[];
+  recommendations: string[];
+  correlationWithKinematics: CorrelationAnalysis[];
+}
+
+export interface CorrelationAnalysis {
+  parameter: string;
+  ogsItem: keyof OGSScore;
+  foot: FootSide;
+  correlation: 'positive' | 'negative' | 'none';
+  significance: 'high' | 'medium' | 'low';
+  description: string;
+}
+
 export interface SessionMetrics {
   durationSeconds: number | null;
   steps: number;
@@ -113,6 +150,7 @@ export interface SessionData {
   metrics: SessionMetrics;
   patternFlags: PatternFlag[];
   report: ReportSummary;
+  ogs: OGSAnalysis | null;
   patient?: {
     name?: string;
     identifier?: string;
@@ -129,4 +167,34 @@ export const DEFAULT_OBSERVATIONS: ObservationChecklist = {
   highCadenceShortSteps: false,
   wideBase: false,
   irregularTiming: false,
+};
+
+export const DEFAULT_OGS_SCORE: OGSScore = {
+  initialFootContact: null,
+  loadingResponse: null,
+  midStance: null,
+  terminalStance: null,
+  preSwing: null,
+  initialSwing: null,
+  midSwing: null,
+  terminalSwing: null,
+};
+
+export const OGS_ITEM_LABELS: Record<keyof OGSScore, string> = {
+  initialFootContact: 'Contacto Inicial del Pie',
+  loadingResponse: 'Respuesta de Carga',
+  midStance: 'Apoyo Medio',
+  terminalStance: 'Apoyo Terminal',
+  preSwing: 'Pre-Balanceo',
+  initialSwing: 'Balanceo Inicial',
+  midSwing: 'Balanceo Medio',
+  terminalSwing: 'Balanceo Terminal',
+};
+
+export const OGS_SCORE_LABELS: Record<OGSItemScore, string> = {
+  '-1': 'Muy Alterado',
+  '0': 'Moderadamente Alterado',
+  '1': 'Levemente Alterado',
+  '2': 'Casi Normal',
+  '3': 'Normal',
 };
