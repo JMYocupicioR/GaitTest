@@ -27,10 +27,10 @@ export interface PathologyAnalysis {
 
 interface PathologyPattern {
   name: string;
-  kinematics: {
-    sagittal?: Partial<KinematicData>;
-    frontal?: Partial<KinematicData>;
-  };
+  // kinematics: {
+  //   sagittal?: Partial<KinematicData>;
+  //   frontal?: Partial<KinematicData>;
+  // };
   compensations: string[];
   gaitEvents: {
     heelStrike?: { timing: number; severity: number };
@@ -47,17 +47,17 @@ interface PathologyPattern {
 const PATHOLOGY_PATTERNS: Record<string, PathologyPattern> = {
   stroke: {
     name: 'Accidente Cerebrovascular (ACV)',
-    kinematics: {
-      sagittal: {
-        hipFlexion: { peak: { value: 15, normal: 30 } },
-        kneeFlexion: { peak: { value: 35, normal: 60 } },
-        ankleFlexion: { peak: { value: -5, normal: 10 } }
-      },
-      frontal: {
-        hipAbduction: { peak: { value: 12, normal: 5 } },
-        kneeAbduction: { peak: { value: 8, normal: 2 } }
-      }
-    },
+    // kinematics: {
+    //   sagittal: {
+    //     hipFlexion: { peak: { value: 15, normal: 30 } },
+    //     kneeFlexion: { peak: { value: 35, normal: 60 } },
+    //     ankleFlexion: { peak: { value: -5, normal: 10 } }
+    //   },
+    //   frontal: {
+    //     hipAbduction: { peak: { value: 12, normal: 5 } },
+    //     kneeAbduction: { peak: { value: 8, normal: 2 } }
+    //   }
+    // },
     compensations: [
       'Circumducción de cadera',
       'Marcha en tijera',
@@ -78,13 +78,13 @@ const PATHOLOGY_PATTERNS: Record<string, PathologyPattern> = {
 
   parkinsons: {
     name: 'Enfermedad de Parkinson',
-    kinematics: {
-      sagittal: {
-        hipFlexion: { peak: { value: 20, normal: 30 } },
-        kneeFlexion: { peak: { value: 40, normal: 60 } },
-        ankleFlexion: { peak: { value: 5, normal: 10 } }
-      }
-    },
+    // kinematics: {
+    //   sagittal: {
+    //     hipFlexion: { peak: { value: 20, normal: 30 } },
+    //     kneeFlexion: { peak: { value: 40, normal: 60 } },
+    //     ankleFlexion: { peak: { value: 5, normal: 10 } }
+    //   }
+    // },
     compensations: [
       'Pasos cortos',
       'Arrastre de pies',
@@ -105,17 +105,17 @@ const PATHOLOGY_PATTERNS: Record<string, PathologyPattern> = {
 
   cerebralPalsy: {
     name: 'Parálisis Cerebral',
-    kinematics: {
-      sagittal: {
-        hipFlexion: { peak: { value: 45, normal: 30 } },
-        kneeFlexion: { peak: { value: 80, normal: 60 } },
-        ankleFlexion: { peak: { value: -10, normal: 10 } }
-      },
-      frontal: {
-        hipAbduction: { peak: { value: 15, normal: 5 } },
-        kneeAbduction: { peak: { value: 12, normal: 2 } }
-      }
-    },
+    // kinematics: {
+    //   sagittal: {
+    //     hipFlexion: { peak: { value: 45, normal: 30 } },
+    //     kneeFlexion: { peak: { value: 80, normal: 60 } },
+    //     ankleFlexion: { peak: { value: -10, normal: 10 } }
+    //   },
+    //   frontal: {
+    //     hipAbduction: { peak: { value: 15, normal: 5 } },
+    //     kneeAbduction: { peak: { value: 12, normal: 2 } }
+    //   }
+    // },
     compensations: [
       'Marcha en tijera',
       'Pie equino',
@@ -137,13 +137,13 @@ const PATHOLOGY_PATTERNS: Record<string, PathologyPattern> = {
 
   ms: {
     name: 'Esclerosis Múltiple',
-    kinematics: {
-      sagittal: {
-        hipFlexion: { peak: { value: 25, normal: 30 } },
-        kneeFlexion: { peak: { value: 45, normal: 60 } },
-        ankleFlexion: { peak: { value: 0, normal: 10 } }
-      }
-    },
+    // kinematics: {
+    //   sagittal: {
+    //     hipFlexion: { peak: { value: 25, normal: 30 } },
+    //     kneeFlexion: { peak: { value: 45, normal: 60 } },
+    //     ankleFlexion: { peak: { value: 0, normal: 10 } }
+    //   }
+    // },
     compensations: [
       'Arrastre de pies',
       'Circunducción',
@@ -165,13 +165,13 @@ const PATHOLOGY_PATTERNS: Record<string, PathologyPattern> = {
 
   spinalCord: {
     name: 'Lesión Medular Incompleta',
-    kinematics: {
-      sagittal: {
-        hipFlexion: { peak: { value: 20, normal: 30 } },
-        kneeFlexion: { peak: { value: 30, normal: 60 } },
-        ankleFlexion: { peak: { value: -5, normal: 10 } }
-      }
-    },
+    // kinematics: {
+    //   sagittal: {
+    //     hipFlexion: { peak: { value: 20, normal: 30 } },
+    //     kneeFlexion: { peak: { value: 30, normal: 60 } },
+    //     ankleFlexion: { peak: { value: -5, normal: 10 } }
+    //   }
+    // },
     compensations: [
       'Circunducción bilateral',
       'Marcha con apoyo',
@@ -317,30 +317,32 @@ export class PathologyAnalyzer {
     }
 
     // Análisis cinemático
-    if (kinematics && pattern.kinematics.sagittal) {
-      maxScore += 10;
-      let kinematicMatches = 0;
-      const kinematicChecks = Object.keys(pattern.kinematics.sagittal).length;
-
-      Object.entries(pattern.kinematics.sagittal).forEach(([joint, expected]) => {
-        const actual = kinematics.sagittal?.[joint as keyof typeof kinematics.sagittal];
-        if (actual && expected.peak && actual.peak) {
-          const deviation = Math.abs(actual.peak.value - expected.peak.value);
-          const normalDeviation = Math.abs(expected.peak.value - expected.peak.normal);
-
-          if (deviation < normalDeviation * 0.5) {
-            kinematicMatches++;
-          }
-          deviationSum += deviation;
-          deviationCount++;
-        }
-      });
-
-      totalScore += (kinematicMatches / kinematicChecks) * 10;
-      if (kinematicMatches > 0) {
-        evidence.push(`Patrones cinemáticos compatibles en ${kinematicMatches}/${kinematicChecks} articulaciones`);
-      }
-    }
+    // if (kinematics && pattern.kinematics.sagittal) {
+    //   maxScore += 10;
+    //   let kinematicMatches = 0;
+    //   const kinematicChecks = Object.keys(pattern.kinematics.sagittal).length;
+    //
+    //   Object.entries(pattern.kinematics.sagittal).forEach(([joint, expected]) => {
+    //     const actual = kinematics.sagittal?.[joint as keyof typeof kinematics.sagittal];
+    //     if (actual && 'left' in actual && actual.left?.summary?.peak && (expected as any).peak) {
+    //       const peakValue = actual.left.summary.peak.value;
+    //       const expectedPeak = (expected as any).peak;
+    //       const deviation = Math.abs(peakValue - expectedPeak.value);
+    //       const normalDeviation = Math.abs(expectedPeak.value - expectedPeak.normal);
+    //
+    //       if (deviation < normalDeviation * 0.5) {
+    //         kinematicMatches++;
+    //       }
+    //       deviationSum += deviation;
+    //       deviationCount++;
+    //     }
+    //   });
+    //
+    //   totalScore += (kinematicMatches / kinematicChecks) * 10;
+    //   if (kinematicMatches > 0) {
+    //     evidence.push(`Patrones cinemáticos compatibles en ${kinematicMatches}/${kinematicChecks} articulaciones`);
+    //   }
+    // }
 
     const confidence = maxScore > 0 ? totalScore / maxScore : 0;
     const deviationMagnitude = deviationCount > 0 ? deviationSum / deviationCount : 0;

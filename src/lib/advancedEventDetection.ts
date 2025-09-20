@@ -84,6 +84,7 @@ export class AdvancedEventDetector {
     if (leftEvent && this.onEventDetected) {
       this.onEventDetected({
         ...leftEvent,
+        confidence: leftEvent.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
         source: 'pose_estimation'
@@ -102,6 +103,7 @@ export class AdvancedEventDetector {
     if (rightEvent && this.onEventDetected) {
       this.onEventDetected({
         ...rightEvent,
+        confidence: rightEvent.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
         source: 'pose_estimation'
@@ -126,6 +128,7 @@ export class AdvancedEventDetector {
     if (leftToeOff && this.onEventDetected) {
       this.onEventDetected({
         ...leftToeOff,
+        confidence: leftToeOff.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
         source: 'pose_estimation'
@@ -144,6 +147,7 @@ export class AdvancedEventDetector {
     if (rightToeOff && this.onEventDetected) {
       this.onEventDetected({
         ...rightToeOff,
+        confidence: rightToeOff.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
         source: 'pose_estimation'
@@ -161,6 +165,7 @@ export class AdvancedEventDetector {
     if (leftFootFlat && this.onEventDetected) {
       this.onEventDetected({
         ...leftFootFlat,
+        confidence: leftFootFlat.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
         source: 'pose_estimation'
@@ -170,6 +175,7 @@ export class AdvancedEventDetector {
     if (rightFootFlat && this.onEventDetected) {
       this.onEventDetected({
         ...rightFootFlat,
+        confidence: rightFootFlat.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
         source: 'pose_estimation'
@@ -198,6 +204,7 @@ export class AdvancedEventDetector {
     if (leftHeelOff && this.onEventDetected) {
       this.onEventDetected({
         ...leftHeelOff,
+        confidence: leftHeelOff.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
         source: 'pose_estimation'
@@ -207,6 +214,7 @@ export class AdvancedEventDetector {
     if (rightHeelOff && this.onEventDetected) {
       this.onEventDetected({
         ...rightHeelOff,
+        confidence: rightHeelOff.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
         source: 'pose_estimation'
@@ -224,6 +232,7 @@ export class AdvancedEventDetector {
     if (leftMaxFlex && this.onEventDetected) {
       this.onEventDetected({
         ...leftMaxFlex,
+        confidence: leftMaxFlex.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
         source: 'pose_estimation'
@@ -233,6 +242,7 @@ export class AdvancedEventDetector {
     if (rightMaxFlex && this.onEventDetected) {
       this.onEventDetected({
         ...rightMaxFlex,
+        confidence: rightMaxFlex.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
         source: 'pose_estimation'
@@ -250,6 +260,7 @@ export class AdvancedEventDetector {
     if (leftMaxExt && this.onEventDetected) {
       this.onEventDetected({
         ...leftMaxExt,
+        confidence: leftMaxExt.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
         source: 'pose_estimation'
@@ -259,6 +270,7 @@ export class AdvancedEventDetector {
     if (rightMaxExt && this.onEventDetected) {
       this.onEventDetected({
         ...rightMaxExt,
+        confidence: rightMaxExt.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
         source: 'pose_estimation'

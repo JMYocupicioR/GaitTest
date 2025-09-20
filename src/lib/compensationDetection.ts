@@ -4,6 +4,7 @@ import type { DetailedKinematics, KinematicSummary } from '../types/session.ts';
 import type { FrontalMetrics } from './frontalAnalysis.ts';
 
 export interface CompensationPattern {
+  id: CompensationPatternType;
   type: CompensationPatternType;
   side: 'left' | 'right' | 'bilateral';
   severity: 'mild' | 'moderate' | 'severe';
@@ -152,6 +153,7 @@ export class CompensationDetector {
 
     if (leftKneeFlexion > CompensationDetector.THRESHOLDS.crouchGait.kneeFlexion) {
       compensations.push({
+        id: 'crouch_gait',
         type: 'crouch_gait',
         side: 'left',
         severity: leftKneeFlexion > 35 ? 'severe' : 'moderate',
@@ -176,6 +178,7 @@ export class CompensationDetector {
     // Detect stiff knee gait
     if (leftKneeFlexion < CompensationDetector.THRESHOLDS.stiffKnee.reducedFlexion) {
       compensations.push({
+        id: 'stiff_knee',
         type: 'stiff_knee',
         side: 'left',
         severity: leftKneeFlexion < 25 ? 'severe' : 'moderate',
@@ -201,6 +204,7 @@ export class CompensationDetector {
     const leftHipFlexion = kinematics.peakValues?.maxHipFlex?.left || 0;
     if (leftHipFlexion > CompensationDetector.THRESHOLDS.steppage.excessiveHipFlexion) {
       compensations.push({
+        id: 'steppage',
         type: 'steppage',
         side: 'left',
         severity: leftHipFlexion > 50 ? 'severe' : 'moderate',
@@ -236,6 +240,7 @@ export class CompensationDetector {
     // Detect Trendelenburg gait
     if (frontalMetrics.pelvicDrop && frontalMetrics.pelvicDrop > CompensationDetector.THRESHOLDS.trendelenburg.pelvicDrop) {
       compensations.push({
+        id: 'trendelenburg',
         type: 'trendelenburg',
         side: 'bilateral',
         severity: frontalMetrics.pelvicDrop > 8 ? 'severe' : 'moderate',
@@ -260,6 +265,7 @@ export class CompensationDetector {
     // Detect circumduction
     if (frontalMetrics.circumduction) {
       compensations.push({
+        id: 'circumduction',
         type: 'circumduction',
         side: 'bilateral', // Would need more analysis to determine specific side
         severity: 'moderate',
@@ -284,6 +290,7 @@ export class CompensationDetector {
     // Detect hip hiking
     if (frontalMetrics.hipHiking) {
       compensations.push({
+        id: 'hip_hiking',
         type: 'hip_hiking',
         side: 'bilateral',
         severity: 'moderate',
@@ -308,6 +315,7 @@ export class CompensationDetector {
     // Detect wide base gait
     if (frontalMetrics.stepWidth && frontalMetrics.stepWidth > 0.20) {
       compensations.push({
+        id: 'wide_base',
         type: 'wide_base',
         side: 'bilateral',
         severity: frontalMetrics.stepWidth > 0.25 ? 'severe' : 'moderate',
@@ -343,6 +351,7 @@ export class CompensationDetector {
     // Detect antalgic gait (reduced stance time)
     if (stepTimings.asymmetry > CompensationDetector.THRESHOLDS.antalgic.stanceTimeReduction) {
       compensations.push({
+        id: 'antalgic',
         type: 'antalgic',
         side: stepTimings.affectedSide,
         severity: stepTimings.asymmetry > 30 ? 'severe' : 'moderate',
@@ -378,6 +387,7 @@ export class CompensationDetector {
     // Detect lateral trunk bending
     if (spatialPatterns.trunkLateralDeviation > 0.05) {
       compensations.push({
+        id: 'lateral_trunk_bending',
         type: 'lateral_trunk_bending',
         side: 'bilateral',
         severity: spatialPatterns.trunkLateralDeviation > 0.08 ? 'severe' : 'moderate',

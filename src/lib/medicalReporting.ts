@@ -459,7 +459,13 @@ export class MedicalReportGenerator {
       };
     }
 
-    const compensationPatterns = compensationAnalysis.secondaryCompensations || [];
+    const compensationPatterns = (compensationAnalysis.detectedCompensations || []).map(comp => ({
+      id: comp.type,
+      name: comp.type,
+      detected: true,
+      magnitude: comp.confidence,
+      description: comp.description,
+    }));
 
     return pathologyAnalyzer.analyzePathologyIndicators(
       basicMetrics,

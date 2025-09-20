@@ -13,6 +13,7 @@ export class OGSAnalyzer {
   calculateOGSFinalScore(
     leftScore: OGSScore,
     rightScore: OGSScore,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     sessionData: SessionData,
     advancedMetrics?: AdvancedMetrics,
     kinematics?: KinematicSummary,
