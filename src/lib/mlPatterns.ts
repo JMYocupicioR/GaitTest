@@ -354,8 +354,7 @@ export class MLPatternDetector {
   }
 
   public generateAdvancedPatternFlags(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    metrics: AdvancedMetrics,
+    _metrics: AdvancedMetrics,
     probabilities: PatternProbabilities,
     anomalies: AnomalyScore[]
   ): PatternFlag[] {

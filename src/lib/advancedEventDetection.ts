@@ -302,7 +302,7 @@ export class AdvancedEventDetector {
     }
   }
 
-  private analyzeHeelStrike(prevAnkle: any, currAnkle: any, prevKnee: any, currKnee: any, foot: FootSide): Partial<DetectedGaitEvent> | null {
+  private analyzeHeelStrike(prevAnkle: any, currAnkle: any, _prevKnee: any, currKnee: any, foot: FootSide): Partial<DetectedGaitEvent> | null {
     // Heel strike: ankle stops moving downward and is at lowest point
     const ankleVelocityY = currAnkle.y - prevAnkle.y;
     const ankleBelowKnee = currAnkle.y > currKnee.y;

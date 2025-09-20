@@ -1,4 +1,4 @@
-import { Pose, POSE_LANDMARKS, type Results } from '@mediapipe/pose';
+import { Pose, type Results } from '@mediapipe/pose';
 import { Camera } from '@mediapipe/camera_utils';
 
 export interface PoseLandmark {
@@ -104,18 +104,18 @@ export class PoseGaitAnalyzer {
     const frame: PoseFrame = {
       timestamp,
       landmarks: normalizedLandmarks,
-      leftAnkle: normalizedLandmarks[POSE_LANDMARKS.LEFT_ANKLE],
-      rightAnkle: normalizedLandmarks[POSE_LANDMARKS.RIGHT_ANKLE],
-      leftKnee: normalizedLandmarks[POSE_LANDMARKS.LEFT_KNEE],
-      rightKnee: normalizedLandmarks[POSE_LANDMARKS.RIGHT_KNEE],
-      leftHip: normalizedLandmarks[POSE_LANDMARKS.LEFT_HIP],
-      rightHip: normalizedLandmarks[POSE_LANDMARKS.RIGHT_HIP],
-      leftHeel: normalizedLandmarks[POSE_LANDMARKS.LEFT_HEEL],
-      rightHeel: normalizedLandmarks[POSE_LANDMARKS.RIGHT_HEEL],
-      leftFootIndex: normalizedLandmarks[POSE_LANDMARKS.LEFT_FOOT_INDEX],
-      rightFootIndex: normalizedLandmarks[POSE_LANDMARKS.RIGHT_FOOT_INDEX],
-      leftShoulder: normalizedLandmarks[POSE_LANDMARKS.LEFT_SHOULDER],
-      rightShoulder: normalizedLandmarks[POSE_LANDMARKS.RIGHT_SHOULDER],
+      leftAnkle: normalizedLandmarks[27], // LEFT_ANKLE
+      rightAnkle: normalizedLandmarks[28], // RIGHT_ANKLE
+      leftKnee: normalizedLandmarks[25], // LEFT_KNEE
+      rightKnee: normalizedLandmarks[26], // RIGHT_KNEE
+      leftHip: normalizedLandmarks[23], // LEFT_HIP
+      rightHip: normalizedLandmarks[24], // RIGHT_HIP
+      leftHeel: normalizedLandmarks[29], // LEFT_HEEL
+      rightHeel: normalizedLandmarks[30], // RIGHT_HEEL
+      leftFootIndex: normalizedLandmarks[31], // LEFT_FOOT_INDEX
+      rightFootIndex: normalizedLandmarks[32], // RIGHT_FOOT_INDEX
+      leftShoulder: normalizedLandmarks[11], // LEFT_SHOULDER
+      rightShoulder: normalizedLandmarks[12], // RIGHT_SHOULDER
     };
 
     this.frameBuffer.push(frame);
@@ -178,8 +178,7 @@ export class PoseGaitAnalyzer {
   private isHeelStrike(
     prevAnkle: PoseLandmark,
     currAnkle: PoseLandmark,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    prevKnee: PoseLandmark,
+    _prevKnee: PoseLandmark,
     currKnee: PoseLandmark
   ): { detected: boolean; confidence: number } {
     // Check if ankle stopped moving downward (y velocity near zero)
