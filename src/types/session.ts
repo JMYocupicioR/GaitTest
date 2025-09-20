@@ -154,9 +154,16 @@ export interface SessionData {
   patient?: {
     name?: string;
     identifier?: string;
+    age?: number;
+    height?: number;
+    weight?: number;
     clinicianNote?: string;
   };
   videoBlob?: Blob;
+  // Enhanced analysis fields
+  advancedMetrics?: AdvancedMetrics;
+  poseFrames?: any[];
+  enhancedAnalysisResult?: any;
 }
 
 export const DEFAULT_OBSERVATIONS: ObservationChecklist = {

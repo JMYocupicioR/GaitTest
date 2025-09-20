@@ -16,6 +16,7 @@ import { evaluatePatterns } from '../lib/patterns.ts';
 import { buildReport } from '../lib/report.ts';
 import { EnhancedGaitAnalyzer } from '../lib/enhancedAnalysis.ts';
 import { ogsAnalyzer } from '../lib/ogsAnalysis.ts';
+import { DataService } from '../services/dataService.ts';
 import type { PoseFrame } from '../lib/poseEstimation.ts';
 
 const initialMetrics = (): SessionMetrics => ({
@@ -66,11 +67,7 @@ const createEmptySession = (): SessionData => ({
 });
 
 interface SessionStore {
-  session: SessionData & {
-    advancedMetrics?: AdvancedMetrics;
-    poseFrames: PoseFrame[];
-    enhancedAnalysisResult?: unknown;
-  };
+  session: SessionData;
   resetSession: () => void;
   setCaptureSettings: (updates: Partial<CaptureSettings>) => void;
   updateQuality: (updates: Partial<CaptureQuality>) => void;
@@ -86,6 +83,7 @@ interface SessionStore {
   setReportSummary: (updates: Partial<ReportSummary>) => void;
   setPoseFrames: (frames: PoseFrame[]) => void;
   performEnhancedAnalysis: () => Promise<void>;
+  saveSessionToDatabase: () => Promise<string | null>;
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -230,8 +228,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             session.ogs.rightScore!,
             session,
             enhancedResult.advancedMetrics,
-            enhancedResult.kinematicSummary,
-            enhancedResult.compensationAnalysis
+            undefined, // kinematicSummary - not available in EnhancedAnalysisResult
+            undefined  // compensationAnalysis - not available in EnhancedAnalysisResult
           );
         }
 
@@ -334,4 +332,26 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         report: { ...session.report, ...updates },
       },
     })),
+
+  saveSessionToDatabase: async () => {
+    const { session } = get();
+    try {
+      // Initialize database if needed
+      await DataService.initializeDatabase();
+
+      // Save session data
+      const sessionId = await DataService.saveSession(session);
+
+      if (sessionId) {
+        console.log('Session saved successfully with ID:', sessionId);
+        return sessionId;
+      } else {
+        console.error('Failed to save session');
+        return null;
+      }
+    } catch (error) {
+      console.error('Error saving session to database:', error);
+      return null;
+    }
+  },
 }));

@@ -742,8 +742,8 @@ export class MedicalReportGenerator {
     }
 
     // OGS-specific recommendations
-    if (ogsAnalysis && ogsAnalysis.clinicalRecommendations.length > 0) {
-      ogsAnalysis.clinicalRecommendations.forEach(rec => {
+    if (ogsAnalysis && ogsAnalysis.recommendations.length > 0) {
+      ogsAnalysis.recommendations.forEach(rec => {
         if (rec.includes('urgente') || rec.includes('inmediata')) {
           immediate.push({
             category: 'medical',
