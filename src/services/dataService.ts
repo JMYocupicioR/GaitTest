@@ -1,5 +1,6 @@
 import { supabase, type GaitAnalysisRecord, type SessionRecord } from '../lib/supabase.ts';
 import type { SessionData } from '../types/session.ts';
+import { kinematicExtractor } from '../lib/kinematicExtractor.ts';
 
 export class DataService {
 
@@ -148,22 +149,31 @@ export class DataService {
     try {
       const records: Omit<GaitAnalysisRecord, 'id' | 'created_at' | 'updated_at'>[] = [];
 
+      // Extract kinematic values using the new extractor
+      const kinematicValues = kinematicExtractor.extractKinematicValues(sessionData);
+
+      // Derive clinical data from pathology analysis if available
+      const primaryPathology = sessionData.enhancedAnalysisResult?.pathologyAnalysis?.primaryFindings[0];
+      const dx_mod = primaryPathology?.condition || undefined;
+
       // Create records for both sides
-      ['L', 'R'].forEach(side => {
+      (['L', 'R'] as const).forEach(side => {
+        const isLeft = side === 'L';
+        const sideKinematics = isLeft ? kinematicValues.left : kinematicValues.right;
 
         const record: Omit<GaitAnalysisRecord, 'id' | 'created_at' | 'updated_at'> = {
           patient_id: patientId,
           exam_id: examId,
-          side: side as 'L' | 'R',
+          side: side,
 
-          // Extract kinematic data based on available metrics (placeholder values)
-          hip_flex_ic: undefined, // Would need kinematic analysis
-          hip_rot_mean: undefined, // Would need kinematic analysis
-          knee_flex_mean_stance: undefined, // Would need kinematic analysis
-          knee_flex_max_extension: undefined, // Would need kinematic analysis
+          // Extract real kinematic data
+          hip_flex_ic: sideKinematics.hip_flex_ic ?? undefined,
+          hip_rot_mean: sideKinematics.hip_rot_mean ?? undefined,
+          knee_flex_mean_stance: sideKinematics.knee_flex_mean_stance ?? undefined,
+          knee_flex_max_extension: sideKinematics.knee_flex_max_extension ?? undefined,
 
-          // Clinical data (would need to be added to session data)
-          dx_mod: undefined, // Could be derived from pathology analysis
+          // Clinical data derived from analysis
+          dx_mod: dx_mod,
           dx_side: side,
           faq: undefined, // Functional Assessment Questionnaire - to be implemented
           gmfcs: undefined, // Gross Motor Function Classification System - to be implemented
@@ -177,12 +187,12 @@ export class DataService {
           cadence: sessionData.metrics.cadenceSpm || undefined,
           speed: sessionData.metrics.speedMps || undefined,
           step_len: sessionData.metrics.stepLengthMeters || undefined,
-          leg_len: undefined, // To be calculated or measured
+          leg_len: kinematicValues.leg_len ?? undefined,
           bmi: sessionData.patient?.height && sessionData.patient?.weight ?
                sessionData.patient.weight / Math.pow(sessionData.patient.height / 100, 2) : undefined,
-          speed_norm: undefined, // Normalized to height or leg length
-          step_len_norm: undefined, // Normalized to height or leg length
-          cadence_norm: undefined, // Normalized cadence
+          speed_norm: kinematicValues.speed_norm ?? undefined,
+          step_len_norm: kinematicValues.step_len_norm ?? undefined,
+          cadence_norm: kinematicValues.cadence_norm ?? undefined,
         };
 
         records.push(record);

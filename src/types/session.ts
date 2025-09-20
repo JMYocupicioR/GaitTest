@@ -348,7 +348,40 @@ export interface SessionData {
   // Enhanced analysis fields
   advancedMetrics?: AdvancedMetrics;
   poseFrames?: any[];
-  enhancedAnalysisResult?: any;
+  enhancedAnalysisResult?: {
+    pathologyAnalysis?: {
+      primaryFindings: Array<{
+        condition: string;
+        confidence: number;
+        evidence: string[];
+        severity: 'mild' | 'moderate' | 'severe';
+        recommendations: string[];
+      }>;
+    };
+    kinematicSummary?: KinematicSummary;
+    kinematicValues?: {
+      left: {
+        hip_flex_ic: number | null;
+        hip_rot_mean: number | null;
+        knee_flex_mean_stance: number | null;
+        knee_flex_max_extension: number | null;
+        ankle_dorsi_max: number | null;
+        ankle_plantar_max: number | null;
+      };
+      right: {
+        hip_flex_ic: number | null;
+        hip_rot_mean: number | null;
+        knee_flex_mean_stance: number | null;
+        knee_flex_max_extension: number | null;
+        ankle_dorsi_max: number | null;
+        ankle_plantar_max: number | null;
+      };
+      speed_norm: number | null;
+      step_len_norm: number | null;
+      cadence_norm: number | null;
+      leg_len: number | null;
+    };
+  };
   kinematics?: {
     summary?: KinematicSummary;
     detailed?: DetailedKinematics;
