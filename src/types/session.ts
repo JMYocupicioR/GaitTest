@@ -120,6 +120,173 @@ export interface AdvancedMetrics extends SessionMetrics {
   lateralStability: number | null;
 }
 
+
+export interface KinematicValueMoment {
+  value: number;
+  timestamp: number | null;
+  frameIndex: number | null;
+  side?: 'left' | 'right' | 'bilateral';
+}
+
+export interface KinematicJointSummary {
+  peak: KinematicValueMoment | null;
+  minimum: KinematicValueMoment | null;
+  maximum: KinematicValueMoment | null;
+  rom: number | null;
+  mean: number | null;
+  standardDeviation: number | null;
+  normalRange?: { min: number; max: number } | null;
+}
+
+export interface JointAngleTimeSeries {
+  frameIndices: number[];
+  timestamps: number[];
+  angles: number[];
+  velocity: number[];
+  acceleration: number[];
+}
+
+export interface SideKinematicData {
+  series: JointAngleTimeSeries | null;
+  summary: KinematicJointSummary | null;
+}
+
+export interface BilateralKinematicData {
+  left: SideKinematicData | null;
+  right: SideKinematicData | null;
+  asymmetry: number | null;
+}
+
+export interface AxialKinematicData {
+  series: JointAngleTimeSeries | null;
+  summary: KinematicJointSummary | null;
+}
+
+export interface AngleAggregate {
+  left: { peak: number | null; mean: number | null; rom: number | null };
+  right: { peak: number | null; mean: number | null; rom: number | null };
+}
+
+export interface SingleAngleAggregate {
+  peak: number | null;
+  mean: number | null;
+  rom: number | null;
+}
+
+export interface KinematicData {
+  sagittal: {
+    hipFlexion?: BilateralKinematicData;
+    kneeFlexion?: BilateralKinematicData;
+    ankleFlexion?: BilateralKinematicData;
+    pelvisTilt?: AxialKinematicData | null;
+    trunkFlexion?: AxialKinematicData | null;
+  };
+  frontal: {
+    hipAbduction?: BilateralKinematicData;
+    kneeAbduction?: BilateralKinematicData;
+    ankleInversion?: BilateralKinematicData;
+    pelvisObliquity?: AxialKinematicData | null;
+    trunkLateralFlexion?: AxialKinematicData | null;
+  };
+}
+
+export interface DetailedKinematics {
+  ankle: {
+    left: {
+      dorsiplantarflexion: JointAngleTimeSeries;
+      inversionEversion: JointAngleTimeSeries | null;
+    };
+    right: {
+      dorsiplantarflexion: JointAngleTimeSeries;
+      inversionEversion: JointAngleTimeSeries | null;
+    };
+  };
+  knee: {
+    left: {
+      flexionExtension: JointAngleTimeSeries;
+      abductionAdduction: JointAngleTimeSeries | null;
+      rotation: JointAngleTimeSeries | null;
+    };
+    right: {
+      flexionExtension: JointAngleTimeSeries;
+      abductionAdduction: JointAngleTimeSeries | null;
+      rotation: JointAngleTimeSeries | null;
+    };
+  };
+  hip: {
+    left: {
+      flexionExtension: JointAngleTimeSeries;
+      abductionAdduction: JointAngleTimeSeries | null;
+      rotation: JointAngleTimeSeries | null;
+    };
+    right: {
+      flexionExtension: JointAngleTimeSeries;
+      abductionAdduction: JointAngleTimeSeries | null;
+      rotation: JointAngleTimeSeries | null;
+    };
+  };
+  pelvis: {
+    tilt: JointAngleTimeSeries | null;
+    obliquity: JointAngleTimeSeries | null;
+    rotation: JointAngleTimeSeries | null;
+  };
+  trunk: {
+    flexionExtension: JointAngleTimeSeries | null;
+    lateralFlexion: JointAngleTimeSeries | null;
+    rotation: JointAngleTimeSeries | null;
+  };
+}
+
+export interface KinematicDeviation {
+  joint: 'ankle' | 'knee' | 'hip' | 'pelvis' | 'trunk';
+  side: 'left' | 'right' | 'bilateral';
+  plane: 'sagittal' | 'frontal' | 'transverse';
+  deviation: string;
+  severity: 'mild' | 'moderate' | 'severe';
+  description: string;
+  clinicalImplication: string;
+  normalRange: { min: number; max: number };
+  observedValue: number;
+}
+
+export interface KinematicSummary {
+  ankleROM: {
+    left: { dorsiflexion: number; plantarflexion: number };
+    right: { dorsiflexion: number; plantarflexion: number };
+  };
+  kneeROM: {
+    left: { flexion: number; extension: number };
+    right: { flexion: number; extension: number };
+  };
+  hipROM: {
+    left: { flexion: number; extension: number };
+    right: { flexion: number; extension: number };
+  };
+  peakValues: {
+    maxAnkleDF: { left: number; right: number };
+    maxAnklePF: { left: number; right: number };
+    maxKneeFlex: { left: number; right: number };
+    maxHipExt: { left: number; right: number };
+    maxHipFlex: { left: number; right: number };
+  };
+  peakTiming: {
+    maxAnkleDFTiming: { left: number; right: number };
+    maxKneeFlexTiming: { left: number; right: number };
+    maxHipExtTiming: { left: number; right: number };
+  };
+  angleAggregates: {
+    hipFlexion: AngleAggregate;
+    kneeFlexion: AngleAggregate;
+    ankleFlexion: AngleAggregate;
+    hipAbduction: AngleAggregate | null;
+    trunkFlexion: SingleAngleAggregate | null;
+    pelvicObliquity: SingleAngleAggregate | null;
+  };
+  deviations: KinematicDeviation[];
+  kinematicQualityScore: number;
+  kinematicData: KinematicData;
+}
+
 export type PatternStatus =
   | 'likely'
   | 'possible'
@@ -164,6 +331,11 @@ export interface SessionData {
   advancedMetrics?: AdvancedMetrics;
   poseFrames?: any[];
   enhancedAnalysisResult?: any;
+  kinematics?: {
+    summary?: KinematicSummary;
+    detailed?: DetailedKinematics;
+    report?: string;
+  };
 }
 
 export const DEFAULT_OBSERVATIONS: ObservationChecklist = {

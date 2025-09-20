@@ -2,6 +2,8 @@ import { computeMetrics } from './metrics.ts';
 import { computeAdvancedMetrics } from './advancedMetrics.ts';
 import { evaluatePatterns } from './patterns.ts';
 import { MLPatternDetector } from './mlPatterns.ts';
+import { KinematicAnalyzer } from './kinematicAnalysis.ts';
+import type { DetailedKinematics, KinematicSummary } from '../types/session.ts';
 import type {
   GaitEvent,
   CaptureSettings,
@@ -33,6 +35,9 @@ export interface EnhancedAnalysisResult {
     recommendation: string;
     confidence: number;
   };
+  detailedKinematics?: DetailedKinematics;
+  kinematicSummary?: KinematicSummary;
+  kinematicReport?: string;
   qualityScore: number;
   processingTime: number;
 }
@@ -62,6 +67,18 @@ export class EnhancedGaitAnalyzer {
       poseFrames: input.poseFrames || [],
       baseMetrics: basicMetrics
     });
+
+    let detailedKinematics: DetailedKinematics | undefined;
+    let kinematicSummary: KinematicSummary | undefined;
+    let kinematicReport: string | undefined;
+
+    if (input.poseFrames && input.poseFrames.length >= 10) {
+      const kinematicAnalyzer = new KinematicAnalyzer(input.captureSettings.viewMode);
+      input.poseFrames.forEach(frame => kinematicAnalyzer.processFrame(frame));
+      detailedKinematics = kinematicAnalyzer.calculateDetailedKinematics();
+      kinematicSummary = kinematicAnalyzer.generateKinematicSummary(detailedKinematics);
+      kinematicReport = kinematicAnalyzer.generateKinematicReport(kinematicSummary);
+    }
 
     // 3. Traditional pattern evaluation
     const traditionalPatterns = evaluatePatterns({
@@ -98,6 +115,9 @@ export class EnhancedGaitAnalyzer {
       mlPatterns,
       combinedPatterns,
       riskAssessment,
+      detailedKinematics,
+      kinematicSummary,
+      kinematicReport,
       qualityScore,
       processingTime
     };

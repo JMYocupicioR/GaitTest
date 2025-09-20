@@ -1,5 +1,5 @@
 import type { AdvancedMetrics, OGSAnalysis } from '../types/session.ts';
-import type { KinematicSummary } from './kinematicAnalysis.ts';
+import type { KinematicSummary } from '../types/session.ts';
 import type { CompensationAnalysis } from './compensationDetection.ts';
 import type { FrontalMetrics } from './frontalAnalysis.ts';
 import type { GaitCycleComparison } from './gaitCycleAnalysis.ts';

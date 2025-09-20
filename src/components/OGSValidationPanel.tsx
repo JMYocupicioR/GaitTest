@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { OGSAnalysis, AdvancedMetrics } from '../types/session.ts';
-import type { KinematicSummary } from '../lib/kinematicAnalysis.ts';
+import type { KinematicSummary } from '../types/session.ts';
 import type { CompensationAnalysis } from '../lib/compensationDetection.ts';
 import { ogsAnalyzer } from '../lib/ogsAnalysis.ts';
 

@@ -6,6 +6,7 @@ import { OGSValidationPanel } from '../components/OGSValidationPanel.tsx';
 import { LongitudinalAnalysis } from '../components/LongitudinalAnalysis.tsx';
 import { PatientSearch } from '../components/PatientSearch.tsx';
 import { initializeDatabase, checkTables } from '../scripts/initDatabase.ts';
+import { checkSupabaseTables, getTableInfo } from '../scripts/checkTables.ts';
 
 export const ResultsScreen = () => {
   const navigate = useNavigate();
@@ -75,6 +76,24 @@ export const ResultsScreen = () => {
   useEffect(() => {
     checkDatabaseStatus();
   }, []);
+
+  const handleVerifySupabase = async () => {
+    console.clear();
+    console.log('🔍 VERIFICACIÓN DE SUPABASE INICIADA...');
+    try {
+      const result = await checkSupabaseTables();
+      await getTableInfo();
+
+      if (result.success) {
+        alert('✅ Base de datos verificada correctamente!\nRevisa la consola para detalles.');
+      } else {
+        alert('⚠️ Base de datos requiere configuración.\nRevisa la consola para instrucciones.');
+      }
+    } catch (error) {
+      console.error('Error en verificación:', error);
+      alert('❌ Error al verificar la base de datos');
+    }
+  };
 
   return (
     <div className="page">
@@ -171,17 +190,27 @@ export const ResultsScreen = () => {
                 {dbStatus.gaitTable && dbStatus.sessionTable ? '✓ Conectada' : '⚠ Requiere inicialización'}
               </span>
             </div>
-            {(!dbStatus.gaitTable || !dbStatus.sessionTable) && (
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
               <button
                 type="button"
                 className="secondary-button"
-                onClick={handleInitializeDatabase}
-                disabled={initializingDb}
-                style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}
+                onClick={handleVerifySupabase}
+                style={{ fontSize: '0.9rem' }}
               >
-                {initializingDb ? 'Inicializando...' : 'Inicializar base de datos'}
+                🔍 Verificar Supabase
               </button>
-            )}
+              {(!dbStatus.gaitTable || !dbStatus.sessionTable) && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={handleInitializeDatabase}
+                  disabled={initializingDb}
+                  style={{ fontSize: '0.9rem' }}
+                >
+                  {initializingDb ? 'Inicializando...' : 'Inicializar base de datos'}
+                </button>
+              )}
+            </div>
           </div>
         )}
 

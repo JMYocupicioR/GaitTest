@@ -17,6 +17,12 @@ export interface PoseFrame {
   rightKnee: PoseLandmark;
   leftHip: PoseLandmark;
   rightHip: PoseLandmark;
+  leftHeel: PoseLandmark;
+  rightHeel: PoseLandmark;
+  leftFootIndex: PoseLandmark;
+  rightFootIndex: PoseLandmark;
+  leftShoulder: PoseLandmark;
+  rightShoulder: PoseLandmark;
 }
 
 export interface HeelStrikeEvent {
@@ -100,7 +106,13 @@ export class PoseGaitAnalyzer {
       leftKnee: results.poseLandmarks[POSE_LANDMARKS.LEFT_KNEE],
       rightKnee: results.poseLandmarks[POSE_LANDMARKS.RIGHT_KNEE],
       leftHip: results.poseLandmarks[POSE_LANDMARKS.LEFT_HIP],
-      rightHip: results.poseLandmarks[POSE_LANDMARKS.RIGHT_HIP]
+      rightHip: results.poseLandmarks[POSE_LANDMARKS.RIGHT_HIP],
+      leftHeel: results.poseLandmarks[POSE_LANDMARKS.LEFT_HEEL],
+      rightHeel: results.poseLandmarks[POSE_LANDMARKS.RIGHT_HEEL],
+      leftFootIndex: results.poseLandmarks[POSE_LANDMARKS.LEFT_FOOT_INDEX],
+      rightFootIndex: results.poseLandmarks[POSE_LANDMARKS.RIGHT_FOOT_INDEX],
+      leftShoulder: results.poseLandmarks[POSE_LANDMARKS.LEFT_SHOULDER],
+      rightShoulder: results.poseLandmarks[POSE_LANDMARKS.RIGHT_SHOULDER]
     };
 
     this.frameBuffer.push(frame);

@@ -1,6 +1,6 @@
 import type { PoseFrame } from './poseEstimation.ts';
 import type { ViewMode } from '../types/session.ts';
-import type { DetailedKinematics, KinematicSummary } from './kinematicAnalysis.ts';
+import type { DetailedKinematics, KinematicSummary } from '../types/session.ts';
 import type { FrontalMetrics } from './frontalAnalysis.ts';
 
 export interface CompensationPattern {

@@ -227,8 +227,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             session.ogs.rightScore!,
             session,
             enhancedResult.advancedMetrics,
-            undefined, // kinematicSummary - not available in EnhancedAnalysisResult
-            undefined  // compensationAnalysis - not available in EnhancedAnalysisResult
+            enhancedResult.kinematicSummary,
+            undefined // compensationAnalysis - not available in EnhancedAnalysisResult
           );
         }
 
@@ -243,6 +243,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             },
             advancedMetrics: enhancedResult.advancedMetrics,
             enhancedAnalysisResult: enhancedResult,
+            kinematics: (enhancedResult.kinematicSummary || enhancedResult.detailedKinematics || enhancedResult.kinematicReport)
+              ? {
+                  summary: enhancedResult.kinematicSummary,
+                  detailed: enhancedResult.detailedKinematics,
+                  report: enhancedResult.kinematicReport,
+                }
+              : current.kinematics,
             ogs: updatedOGS,
           },
         }));
@@ -354,3 +361,4 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
   },
 }));
+

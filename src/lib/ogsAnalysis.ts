@@ -6,7 +6,7 @@ import type {
   FootSide,
   AdvancedMetrics
 } from '../types/session.ts';
-import type { KinematicSummary } from './kinematicAnalysis.ts';
+import type { KinematicSummary } from '../types/session.ts';
 import type { CompensationAnalysis } from './compensationDetection.ts';
 
 export class OGSAnalyzer {
