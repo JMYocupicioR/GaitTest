@@ -530,7 +530,7 @@ export class CompensationDetector {
 
     compensations.forEach(comp => {
       // Energy expenditure impact
-      const energyImpact: Record<CompensationPatternType, number> = {
+      const energyImpact: Partial<Record<CompensationPatternType, number>> = {
         circumduction: 15,
         hip_hiking: 20,
         crouch_gait: 35,
@@ -540,7 +540,7 @@ export class CompensationDetector {
       };
 
       // Mobility impact
-      const mobilityImpact: Record<CompensationPatternType, number> = {
+      const mobilityImpact: Partial<Record<CompensationPatternType, number>> = {
         stiff_knee: 25,
         crouch_gait: 30,
         antalgic: 20,
@@ -548,7 +548,7 @@ export class CompensationDetector {
       };
 
       // Fall risk impact
-      const fallRiskImpact: Record<CompensationPatternType, number> = {
+      const fallRiskImpact: Partial<Record<CompensationPatternType, number>> = {
         steppage: 40,
         foot_drop: 45,
         wide_base: 15,
@@ -556,9 +556,9 @@ export class CompensationDetector {
         antalgic: 20
       };
 
-      energyIncrease += (energyImpact[comp.type] || 0) * comp.confidence;
-      mobilityReduction += (mobilityImpact[comp.type] || 0) * comp.confidence;
-      fallRiskIncrease += (fallRiskImpact[comp.type] || 0) * comp.confidence;
+      energyIncrease += (energyImpact[comp.type] ?? 0) * comp.confidence;
+      mobilityReduction += (mobilityImpact[comp.type] ?? 0) * comp.confidence;
+      fallRiskIncrease += (fallRiskImpact[comp.type] ?? 0) * comp.confidence;
     });
 
     // Determine pain prediction
