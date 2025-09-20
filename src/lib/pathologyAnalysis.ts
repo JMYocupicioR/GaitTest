@@ -38,9 +38,9 @@ interface PathologyPattern {
     stancePhase?: { duration: number; asymmetry: number };
   };
   spatiotemporal: {
-    speedMps?: { min: number; max: number };
-    cadenceSpm?: { min: number; max: number };
-    gaitSymmetryIndex?: { min: number };
+    velocity?: { min: number; max: number };
+    cadence?: { min: number; max: number };
+    stepLength?: { asymmetry: number };
   };
 }
 
@@ -70,9 +70,9 @@ const PATHOLOGY_PATTERNS: Record<string, PathologyPattern> = {
       stancePhase: { duration: 0.7, asymmetry: 0.3 }
     },
     spatiotemporal: {
-      speedMps: { min: 0.3, max: 0.8 },
-      cadenceSpm: { min: 60, max: 90 },
-      gaitSymmetryIndex: { min: 0.7 } // Asumiendo que un índice más bajo es peor
+      velocity: { min: 0.3, max: 0.8 },
+      cadence: { min: 60, max: 90 },
+      stepLength: { asymmetry: 0.2 }
     }
   },
 
@@ -97,9 +97,9 @@ const PATHOLOGY_PATTERNS: Record<string, PathologyPattern> = {
       toeOff: { timing: 0.58, severity: 0.5 }
     },
     spatiotemporal: {
-      speedMps: { min: 0.4, max: 0.9 },
-      cadenceSpm: { min: 80, max: 120 },
-      gaitSymmetryIndex: { min: 0.9 }
+      velocity: { min: 0.4, max: 0.9 },
+      cadence: { min: 80, max: 120 },
+      stepLength: { asymmetry: 0.1 }
     }
   },
 
@@ -129,9 +129,9 @@ const PATHOLOGY_PATTERNS: Record<string, PathologyPattern> = {
       stancePhase: { duration: 0.75, asymmetry: 0.25 }
     },
     spatiotemporal: {
-      speedMps: { min: 0.2, max: 0.7 },
-      cadenceSpm: { min: 50, max: 100 },
-      gaitSymmetryIndex: { min: 0.6 }
+      velocity: { min: 0.2, max: 0.7 },
+      cadence: { min: 50, max: 100 },
+      stepLength: { asymmetry: 0.3 }
     }
   },
 
@@ -157,9 +157,9 @@ const PATHOLOGY_PATTERNS: Record<string, PathologyPattern> = {
       stancePhase: { duration: 0.68, asymmetry: 0.2 }
     },
     spatiotemporal: {
-      speedMps: { min: 0.3, max: 0.8 },
-      cadenceSpm: { min: 70, max: 100 },
-      gaitSymmetryIndex: { min: 0.8 }
+      velocity: { min: 0.3, max: 0.8 },
+      cadence: { min: 70, max: 100 },
+      stepLength: { asymmetry: 0.15 }
     }
   },
 
@@ -185,9 +185,9 @@ const PATHOLOGY_PATTERNS: Record<string, PathologyPattern> = {
       stancePhase: { duration: 0.8, asymmetry: 0.4 }
     },
     spatiotemporal: {
-      speedMps: { min: 0.1, max: 0.5 },
-      cadenceSpm: { min: 40, max: 80 },
-      gaitSymmetryIndex: { min: 0.5 }
+      velocity: { min: 0.1, max: 0.5 },
+      cadence: { min: 40, max: 80 },
+      stepLength: { asymmetry: 0.4 }
     }
   }
 };
@@ -253,35 +253,35 @@ export class PathologyAnalyzer {
     let deviationCount = 0;
 
     // Análisis espaciotemporal
-    if (pattern.spatiotemporal.speedMps && metrics.speedMps) {
+    if (pattern.spatiotemporal.velocity && metrics.velocity) {
       maxScore += 20;
-      const { min, max } = pattern.spatiotemporal.speedMps;
-      if (metrics.speedMps >= min && metrics.speedMps <= max) {
+      const { min, max } = pattern.spatiotemporal.velocity;
+      if (metrics.velocity >= min && metrics.velocity <= max) {
         totalScore += 20;
-        evidence.push(`Velocidad característica: ${metrics.speedMps.toFixed(2)} m/s`);
+        evidence.push(`Velocidad característica: ${metrics.velocity.toFixed(2)} m/s`);
       }
-      deviationSum += Math.abs(metrics.speedMps - (min + max) / 2);
+      deviationSum += Math.abs(metrics.velocity - (min + max) / 2);
       deviationCount++;
     }
 
-    if (pattern.spatiotemporal.cadenceSpm && metrics.cadenceSpm) {
+    if (pattern.spatiotemporal.cadence && metrics.cadence) {
       maxScore += 15;
-      const { min, max } = pattern.spatiotemporal.cadenceSpm;
-      if (metrics.cadenceSpm >= min && metrics.cadenceSpm <= max) {
+      const { min, max } = pattern.spatiotemporal.cadence;
+      if (metrics.cadence >= min && metrics.cadence <= max) {
         totalScore += 15;
-        evidence.push(`Cadencia característica: ${metrics.cadenceSpm} pasos/min`);
+        evidence.push(`Cadencia característica: ${metrics.cadence} pasos/min`);
       }
-      deviationSum += Math.abs(metrics.cadenceSpm - (min + max) / 2);
+      deviationSum += Math.abs(metrics.cadence - (min + max) / 2);
       deviationCount++;
     }
 
-    if (pattern.spatiotemporal.gaitSymmetryIndex && metrics.gaitSymmetryIndex) {
+    if (pattern.spatiotemporal.stepLength && metrics.stepLengthAsymmetry) {
       maxScore += 15;
-      if (metrics.gaitSymmetryIndex <= pattern.spatiotemporal.gaitSymmetryIndex.min) {
+      if (metrics.stepLengthAsymmetry >= pattern.spatiotemporal.stepLength.asymmetry) {
         totalScore += 15;
-        evidence.push(`Asimetría de paso: ${(metrics.gaitSymmetryIndex * 100).toFixed(1)}%`);
+        evidence.push(`Asimetría de paso: ${(metrics.stepLengthAsymmetry * 100).toFixed(1)}%`);
       }
-      deviationSum += Math.abs(metrics.gaitSymmetryIndex - pattern.spatiotemporal.gaitSymmetryIndex.min);
+      deviationSum += Math.abs(metrics.stepLengthAsymmetry - pattern.spatiotemporal.stepLength.asymmetry);
       deviationCount++;
     }
 
@@ -289,8 +289,8 @@ export class PathologyAnalyzer {
     maxScore += 25;
     const matchingCompensations = compensations.filter(comp =>
       pattern.compensations.some(patternComp =>
-        comp.name.toLowerCase().includes(patternComp.toLowerCase()) ||
-        patternComp.toLowerCase().includes(comp.name.toLowerCase())
+        comp.type.toLowerCase().includes(patternComp.toLowerCase()) ||
+        patternComp.toLowerCase().includes(comp.type.toLowerCase())
       )
     );
 
@@ -298,16 +298,15 @@ export class PathologyAnalyzer {
     totalScore += compensationScore;
 
     if (matchingCompensations.length > 0) {
-      evidence.push(`Compensaciones detectadas: ${matchingCompensations.map(c => c.name).join(', ')}`);
+      evidence.push(`Compensaciones detectadas: ${matchingCompensations.map(c => c.type).join(', ')}`);
     }
 
     // Análisis de eventos de marcha
     if (pattern.gaitEvents.stancePhase && cycles.length > 0) {
       maxScore += 15;
       const avgStanceDuration = cycles.reduce((sum, cycle) =>
-        sum + (cycle.events.toeOff - cycle.events.initialContact), 0) / cycles.length;
-      const avgCycleDuration = cycles.reduce((sum, cycle) => sum + cycle.duration, 0) / cycles.length;
-      const normalizedStance = avgCycleDuration > 0 ? avgStanceDuration / avgCycleDuration : 0;
+        sum + (cycle.events.toeOff - cycle.events.heelStrike), 0) / cycles.length;
+      const normalizedStance = avgStanceDuration / cycles[0].duration;
 
       if (Math.abs(normalizedStance - pattern.gaitEvents.stancePhase.duration) < 0.1) {
         totalScore += 15;
@@ -325,11 +324,9 @@ export class PathologyAnalyzer {
 
       Object.entries(pattern.kinematics.sagittal).forEach(([joint, expected]) => {
         const actual = kinematics.sagittal?.[joint as keyof typeof kinematics.sagittal];
-        if (actual && 'left' in actual && actual.left?.summary?.peak && (expected as any).peak) {
-          const peakValue = actual.left.summary.peak.value;
-          const expectedPeak = (expected as any).peak;
-          const deviation = Math.abs(peakValue - expectedPeak.value);
-          const normalDeviation = Math.abs(expectedPeak.value - expectedPeak.normal);
+        if (actual && expected.peak && actual.peak) {
+          const deviation = Math.abs(actual.peak.value - expected.peak.value);
+          const normalDeviation = Math.abs(expected.peak.value - expected.peak.normal);
 
           if (deviation < normalDeviation * 0.5) {
             kinematicMatches++;
@@ -417,20 +414,20 @@ export class PathologyAnalyzer {
     let progressionRisk = 0;
 
     // Evaluación del riesgo de caídas
-    if (metrics.speedMps && metrics.speedMps < 0.6) fallRisk += 30;
-    if (metrics.cadenceSpm && metrics.cadenceSpm < 80) fallRisk += 20;
-    if (metrics.gaitSymmetryIndex && metrics.gaitSymmetryIndex < 0.8) fallRisk += 25; // Asumiendo que < 80% es malo
+    if (metrics.velocity < 0.6) fallRisk += 30;
+    if (metrics.cadence < 80) fallRisk += 20;
+    if (metrics.stepLengthAsymmetry > 0.2) fallRisk += 25;
 
     const balanceCompensations = compensations.filter(c =>
-      c.name.includes('pérdida') || c.name.includes('inestabilidad') ||
-      c.name.includes('Trendelenburg') || c.name.includes('lateral')
+      c.type.includes('pérdida') || c.type.includes('inestabilidad') ||
+      c.type.includes('Trendelenburg') || c.type.includes('lateral')
     );
     fallRisk += balanceCompensations.length * 15;
 
     // Evaluación del nivel de movilidad
-    if ((metrics.speedMps && metrics.speedMps < 0.4) || compensations.length > 5) {
+    if (metrics.velocity < 0.4 || compensations.length > 5) {
       mobilityLevel = 'dependent';
-    } else if ((metrics.speedMps && metrics.speedMps < 0.8) || compensations.length > 2) {
+    } else if (metrics.velocity < 0.8 || compensations.length > 2) {
       mobilityLevel = 'assisted';
     }
 
@@ -467,7 +464,7 @@ export class PathologyAnalyzer {
     });
 
     // Prioridades basadas en compensaciones críticas
-    const criticalCompensations = compensations.filter(c => c.magnitude > 0.7);
+    const criticalCompensations = compensations.filter(c => c.severity > 0.7);
     if (criticalCompensations.length > 0) {
       priorities.push('Corrección de compensaciones críticas');
     }
@@ -497,7 +494,7 @@ export class PathologyAnalyzer {
       }
     });
 
-    if (metrics.speedMps && metrics.speedMps < 0.6) {
+    if (metrics.velocity < 0.6) {
       parameters.push('Riesgo de caídas');
     }
 

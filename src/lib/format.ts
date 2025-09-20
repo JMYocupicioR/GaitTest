@@ -13,17 +13,23 @@ export const formatCadence = (value: number | null): string => {
 };
 
 export const formatMeters = (value: number | null): string => {
-  if (value === null) return '— m';
+  if (value === null || Number.isNaN(value)) {
+    return '—';
+  }
   return `${value.toFixed(2)} m`;
 };
 
-export const formatSeconds = (seconds: number | null): string => {
-  if (seconds === null) return '— s';
-  return `${seconds.toFixed(2)} s`;
+export const formatSeconds = (value: number | null): string => {
+  if (value === null || Number.isNaN(value)) {
+    return '—';
+  }
+  return `${value.toFixed(2)} s`;
 };
 
 export const formatPercentage = (value: number | null): string => {
-  if (value === null) return '— %';
+  if (value === null || Number.isNaN(value)) {
+    return '—';
+  }
   return `${value.toFixed(1)}%`;
 };
 

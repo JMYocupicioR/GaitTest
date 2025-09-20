@@ -12,7 +12,7 @@ export const patternStatusSchema = z.union([
 export const sessionPayloadSchema = z.object({
   session_id: z.string(),
   capture: z.object({
-    view: z.enum(['lateral', 'frontal', 'dual']),
+    view: z.enum(['lateral', 'frontal']),
     distance_m: z.number().nullable(),
     fps: z.number().nullable(),
     quality: z.enum(['high', 'mid', 'low']),
@@ -22,7 +22,7 @@ export const sessionPayloadSchema = z.object({
       z.object({
         t: z.number().nonnegative(),
         foot: z.enum(['L', 'R']),
-        type: z.enum(['heel_strike', 'toe_off', 'foot_flat', 'heel_off', 'max_knee_flexion', 'max_hip_extension']),
+        type: z.literal('heel_strike'),
         source: z.enum(['auto', 'manual']).optional(),
         confidence: z.number().nullable().optional(),
       }),

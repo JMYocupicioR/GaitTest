@@ -1,10 +1,4 @@
-import {
-  Pose,
-  POSE_LANDMARKS,
-  POSE_LANDMARKS_LITE,
-  POSE_CONNECTIONS,
-  Results
-} from '@mediapipe/pose';
+import { Pose, POSE_LANDMARKS } from '@mediapipe/pose';
 import { Camera } from '@mediapipe/camera_utils';
 
 export interface PoseLandmark {
@@ -43,6 +37,7 @@ export class PoseGaitAnalyzer {
   private camera: Camera | null = null;
   private isProcessing = false;
   private frameBuffer: PoseFrame[] = [];
+  private previousFrames: PoseFrame[] = [];
   private onHeelStrike?: (event: HeelStrikeEvent) => void;
   private onPoseDetected?: (frame: PoseFrame) => void;
 
@@ -60,7 +55,7 @@ export class PoseGaitAnalyzer {
       minTrackingConfidence: 0.5
     });
 
-    this.pose.onResults((results) => this.onPoseResults(results));
+    this.pose.onResults(this.onPoseResults.bind(this));
   }
 
   public async initializeCamera(videoElement: HTMLVideoElement): Promise<void> {
@@ -87,6 +82,7 @@ export class PoseGaitAnalyzer {
       this.camera.stop();
     }
     this.frameBuffer = [];
+    this.previousFrames = [];
   }
 
   public setHeelStrikeCallback(callback: (event: HeelStrikeEvent) => void): void {
@@ -97,31 +93,26 @@ export class PoseGaitAnalyzer {
     this.onPoseDetected = callback;
   }
 
-  private onPoseResults(results: Results): void {
+  private onPoseResults(results: { poseLandmarks?: PoseLandmark[] }): void {
     if (!results.poseLandmarks) return;
 
     const timestamp = performance.now() / 1000; // Convert to seconds
 
-    const normalizedLandmarks = results.poseLandmarks.map(landmark => ({
-      ...landmark,
-      visibility: landmark.visibility ?? 0
-    }));
-
     const frame: PoseFrame = {
       timestamp,
-      landmarks: normalizedLandmarks,
-      leftAnkle: normalizedLandmarks[POSE_LANDMARKS.LEFT_ANKLE],
-      rightAnkle: normalizedLandmarks[POSE_LANDMARKS.RIGHT_ANKLE],
-      leftKnee: normalizedLandmarks[POSE_LANDMARKS.LEFT_KNEE],
-      rightKnee: normalizedLandmarks[POSE_LANDMARKS.RIGHT_KNEE],
-      leftHip: normalizedLandmarks[POSE_LANDMARKS.LEFT_HIP],
-      rightHip: normalizedLandmarks[POSE_LANDMARKS.RIGHT_HIP],
-      leftHeel: normalizedLandmarks[POSE_LANDMARKS.LEFT_HEEL],
-      rightHeel: normalizedLandmarks[POSE_LANDMARKS.RIGHT_HEEL],
-      leftFootIndex: normalizedLandmarks[POSE_LANDMARKS.LEFT_FOOT_INDEX],
-      rightFootIndex: normalizedLandmarks[POSE_LANDMARKS.RIGHT_FOOT_INDEX],
-      leftShoulder: normalizedLandmarks[POSE_LANDMARKS.LEFT_SHOULDER],
-      rightShoulder: normalizedLandmarks[POSE_LANDMARKS.RIGHT_SHOULDER]
+      landmarks: results.poseLandmarks,
+      leftAnkle: results.poseLandmarks[POSE_LANDMARKS.LEFT_ANKLE],
+      rightAnkle: results.poseLandmarks[POSE_LANDMARKS.RIGHT_ANKLE],
+      leftKnee: results.poseLandmarks[POSE_LANDMARKS.LEFT_KNEE],
+      rightKnee: results.poseLandmarks[POSE_LANDMARKS.RIGHT_KNEE],
+      leftHip: results.poseLandmarks[POSE_LANDMARKS.LEFT_HIP],
+      rightHip: results.poseLandmarks[POSE_LANDMARKS.RIGHT_HIP],
+      leftHeel: results.poseLandmarks[POSE_LANDMARKS.LEFT_HEEL],
+      rightHeel: results.poseLandmarks[POSE_LANDMARKS.RIGHT_HEEL],
+      leftFootIndex: results.poseLandmarks[POSE_LANDMARKS.LEFT_FOOT_INDEX],
+      rightFootIndex: results.poseLandmarks[POSE_LANDMARKS.RIGHT_FOOT_INDEX],
+      leftShoulder: results.poseLandmarks[POSE_LANDMARKS.LEFT_SHOULDER],
+      rightShoulder: results.poseLandmarks[POSE_LANDMARKS.RIGHT_SHOULDER]
     };
 
     this.frameBuffer.push(frame);
@@ -184,7 +175,6 @@ export class PoseGaitAnalyzer {
   private isHeelStrike(
     prevAnkle: PoseLandmark,
     currAnkle: PoseLandmark,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     prevKnee: PoseLandmark,
     currKnee: PoseLandmark
   ): { detected: boolean; confidence: number } {

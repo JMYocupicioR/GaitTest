@@ -205,7 +205,7 @@ export async function createTablesDirectly() {
     console.log('Test query result:', error1);
 
     // Intentar crear las tablas directamente
-    const { error } = await supabase
+    const { data, error } = await supabase
       .rpc('exec_sql', { sql: createGaitTable });
 
     if (error) {
@@ -228,12 +228,12 @@ export async function createTablesDirectly() {
 // Función para verificar si las tablas existen
 export async function checkTables() {
   try {
-    const { error: gaitError } = await supabase
+    const { data: gaitData, error: gaitError } = await supabase
       .from('gait_analysis_records')
       .select('count')
       .limit(1);
 
-    const { error: sessionError } = await supabase
+    const { data: sessionData, error: sessionError } = await supabase
       .from('session_records')
       .select('count')
       .limit(1);

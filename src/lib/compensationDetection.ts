@@ -1,6 +1,6 @@
 import type { PoseFrame } from './poseEstimation.ts';
 import type { ViewMode } from '../types/session.ts';
-import type { KinematicSummary } from '../types/session.ts';
+import type { DetailedKinematics, KinematicSummary } from '../types/session.ts';
 import type { FrontalMetrics } from './frontalAnalysis.ts';
 
 export interface CompensationPattern {
@@ -148,7 +148,8 @@ export class CompensationDetector {
 
     // Detect crouch gait
     const leftKneeFlexion = kinematics.peakValues?.maxKneeFlex?.left || 0;
-    
+    const rightKneeFlexion = kinematics.peakValues?.maxKneeFlex?.right || 0;
+
     if (leftKneeFlexion > CompensationDetector.THRESHOLDS.crouchGait.kneeFlexion) {
       compensations.push({
         type: 'crouch_gait',
@@ -403,6 +404,12 @@ export class CompensationDetector {
 
   private analyzeStepTimings(): { asymmetry: number; affectedSide: 'left' | 'right' } {
     // Simplified analysis - would need proper event detection
+    const leftStanceTimes: number[] = [];
+    const rightStanceTimes: number[] = [];
+
+    // This is a simplified implementation
+    // In reality, you'd use proper gait event detection
+
     let leftSum = 0;
     let rightSum = 0;
     let leftCount = 0;
@@ -517,63 +524,30 @@ export class CompensationDetector {
 
     compensations.forEach(comp => {
       // Energy expenditure impact
-      const energyImpact: Record<CompensationPatternType, number> = {
+      const energyImpact = {
         circumduction: 15,
         hip_hiking: 20,
         crouch_gait: 35,
         steppage: 25,
         trendelenburg: 30,
-        wide_base: 20,
-        stiff_knee: 10,
-        excessive_knee_flexion: 15,
-        foot_drop: 20,
-        antalgic: 10,
-        trunk_lean: 10,
-        scissoring: 25,
-        toe_walking: 20,
-        heel_walking: 15,
-        vaulting: 25,
-        lateral_trunk_bending: 15
+        wide_base: 20
       };
 
       // Mobility impact
-      const mobilityImpact: Record<CompensationPatternType, number> = {
+      const mobilityImpact = {
         stiff_knee: 25,
         crouch_gait: 30,
         antalgic: 20,
-        steppage: 15,
-        circumduction: 10,
-        hip_hiking: 10,
-        trendelenburg: 15,
-        wide_base: 5,
-        foot_drop: 20,
-        excessive_knee_flexion: 10,
-        scissoring: 30,
-        toe_walking: 10,
-        heel_walking: 10,
-        vaulting: 20,
-        trunk_lean: 10,
-        lateral_trunk_bending: 10
+        steppage: 15
       };
 
       // Fall risk impact
-      const fallRiskImpact: Record<CompensationPatternType, number> = {
+      const fallRiskImpact = {
         steppage: 40,
         foot_drop: 45,
         wide_base: 15,
         trendelenburg: 25,
-        antalgic: 20,
-        circumduction: 10,
-        hip_hiking: 15,
-        crouch_gait: 20,
-        stiff_knee: 10,
-        excessive_knee_flexion: 5,
-        scissoring: 30,
-        toe_walking: 10,
-        heel_walking: 15,
-        vaulting: 20,
-        trunk_lean: 20,
-        lateral_trunk_bending: 25
+        antalgic: 20
       };
 
       energyIncrease += (energyImpact[comp.type] || 0) * comp.confidence;
