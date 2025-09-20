@@ -83,11 +83,13 @@ export class AdvancedEventDetector {
 
     if (leftEvent && this.onEventDetected) {
       this.onEventDetected({
-        ...leftEvent,
+        ...(leftEvent as Partial<DetectedGaitEvent>),
         confidence: leftEvent.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        type: leftEvent.type!,
+        foot: leftEvent.foot!,
       });
     }
 
@@ -102,11 +104,13 @@ export class AdvancedEventDetector {
 
     if (rightEvent && this.onEventDetected) {
       this.onEventDetected({
-        ...rightEvent,
+        ...(rightEvent as Partial<DetectedGaitEvent>),
         confidence: rightEvent.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        type: rightEvent.type!,
+        foot: rightEvent.foot!,
       });
     }
   }
@@ -127,11 +131,13 @@ export class AdvancedEventDetector {
 
     if (leftToeOff && this.onEventDetected) {
       this.onEventDetected({
-        ...leftToeOff,
+        ...(leftToeOff as Partial<DetectedGaitEvent>),
         confidence: leftToeOff.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        type: leftToeOff.type!,
+        foot: leftToeOff.foot!,
       });
     }
 
@@ -146,11 +152,13 @@ export class AdvancedEventDetector {
 
     if (rightToeOff && this.onEventDetected) {
       this.onEventDetected({
-        ...rightToeOff,
+        ...(rightToeOff as Partial<DetectedGaitEvent>),
         confidence: rightToeOff.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        type: rightToeOff.type!,
+        foot: rightToeOff.foot!,
       });
     }
   }
@@ -164,21 +172,25 @@ export class AdvancedEventDetector {
 
     if (leftFootFlat && this.onEventDetected) {
       this.onEventDetected({
-        ...leftFootFlat,
+        ...(leftFootFlat as Partial<DetectedGaitEvent>),
         confidence: leftFootFlat.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        type: leftFootFlat.type!,
+        foot: leftFootFlat.foot!,
       });
     }
 
     if (rightFootFlat && this.onEventDetected) {
       this.onEventDetected({
-        ...rightFootFlat,
+        ...(rightFootFlat as Partial<DetectedGaitEvent>),
         confidence: rightFootFlat.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        type: rightFootFlat.type!,
+        foot: rightFootFlat.foot!,
       });
     }
   }
@@ -203,21 +215,25 @@ export class AdvancedEventDetector {
 
     if (leftHeelOff && this.onEventDetected) {
       this.onEventDetected({
-        ...leftHeelOff,
+        ...(leftHeelOff as Partial<DetectedGaitEvent>),
         confidence: leftHeelOff.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        type: leftHeelOff.type!,
+        foot: leftHeelOff.foot!,
       });
     }
 
     if (rightHeelOff && this.onEventDetected) {
       this.onEventDetected({
-        ...rightHeelOff,
+        ...(rightHeelOff as Partial<DetectedGaitEvent>),
         confidence: rightHeelOff.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        type: rightHeelOff.type!,
+        foot: rightHeelOff.foot!,
       });
     }
   }
@@ -231,21 +247,25 @@ export class AdvancedEventDetector {
 
     if (leftMaxFlex && this.onEventDetected) {
       this.onEventDetected({
-        ...leftMaxFlex,
+        ...(leftMaxFlex as Partial<DetectedGaitEvent>),
         confidence: leftMaxFlex.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        type: leftMaxFlex.type!,
+        foot: leftMaxFlex.foot!,
       });
     }
 
     if (rightMaxFlex && this.onEventDetected) {
       this.onEventDetected({
-        ...rightMaxFlex,
+        ...(rightMaxFlex as Partial<DetectedGaitEvent>),
         confidence: rightMaxFlex.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        type: rightMaxFlex.type!,
+        foot: rightMaxFlex.foot!,
       });
     }
   }
@@ -259,21 +279,25 @@ export class AdvancedEventDetector {
 
     if (leftMaxExt && this.onEventDetected) {
       this.onEventDetected({
-        ...leftMaxExt,
+        ...(leftMaxExt as Partial<DetectedGaitEvent>),
         confidence: leftMaxExt.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        type: leftMaxExt.type!,
+        foot: leftMaxExt.foot!,
       });
     }
 
     if (rightMaxExt && this.onEventDetected) {
       this.onEventDetected({
-        ...rightMaxExt,
+        ...(rightMaxExt as Partial<DetectedGaitEvent>),
         confidence: rightMaxExt.confidence ?? 0,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        type: rightMaxExt.type!,
+        foot: rightMaxExt.foot!,
       });
     }
   }

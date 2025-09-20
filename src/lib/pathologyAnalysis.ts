@@ -207,8 +207,7 @@ export class PathologyAnalyzer {
         pattern,
         metrics,
         cycles,
-        compensations,
-        kinematics
+        compensations
       );
 
       const indicators: PathologyIndicators = {
@@ -243,8 +242,7 @@ export class PathologyAnalyzer {
     pattern: PathologyPattern,
     metrics: AdvancedMetrics,
     cycles: GaitCycle[],
-    compensations: CompensationPattern[],
-    kinematics?: KinematicData
+    compensations: CompensationPattern[]
   ): { confidence: number; evidence: string[]; deviationMagnitude: number } {
     const evidence: string[] = [];
     let totalScore = 0;
@@ -324,11 +322,9 @@ export class PathologyAnalyzer {
     //
     //   Object.entries(pattern.kinematics.sagittal).forEach(([joint, expected]) => {
     //     const actual = kinematics.sagittal?.[joint as keyof typeof kinematics.sagittal];
-    //     if (actual && 'left' in actual && actual.left?.summary?.peak && (expected as any).peak) {
-    //       const peakValue = actual.left.summary.peak.value;
-    //       const expectedPeak = (expected as any).peak;
-    //       const deviation = Math.abs(peakValue - expectedPeak.value);
-    //       const normalDeviation = Math.abs(expectedPeak.value - expectedPeak.normal);
+    //     if (actual && expected.peak && actual.peak) {
+    //       const deviation = Math.abs(actual.peak.value - expected.peak.value);
+    //       const normalDeviation = Math.abs(expected.peak.value - expected.peak.normal);
     //
     //       if (deviation < normalDeviation * 0.5) {
     //         kinematicMatches++;

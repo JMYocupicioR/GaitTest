@@ -120,6 +120,24 @@ export interface AdvancedMetrics extends SessionMetrics {
   lateralStability: number | null;
 }
 
+export interface GaitCycle {
+  side: 'left' | 'right';
+  startFrame: number;
+  endFrame: number;
+  duration: number;
+  events: {
+    initialContact: number;
+    toeOff: number;
+  };
+}
+
+export interface CompensationPattern {
+  id: string;
+  name: string;
+  detected: boolean;
+  magnitude: number;
+  description: string;
+}
 
 export interface KinematicValueMoment {
   value: number;

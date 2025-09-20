@@ -1,6 +1,6 @@
 import type { PoseFrame } from './poseEstimation.ts';
 import type { ViewMode } from '../types/session.ts';
-import type { DetailedKinematics, KinematicSummary } from '../types/session.ts';
+import type { KinematicSummary } from '../types/session.ts';
 import type { FrontalMetrics } from './frontalAnalysis.ts';
 
 export interface CompensationPattern {
@@ -149,7 +149,6 @@ export class CompensationDetector {
 
     // Detect crouch gait
     const leftKneeFlexion = kinematics.peakValues?.maxKneeFlex?.left || 0;
-    const rightKneeFlexion = kinematics.peakValues?.maxKneeFlex?.right || 0;
 
     if (leftKneeFlexion > CompensationDetector.THRESHOLDS.crouchGait.kneeFlexion) {
       compensations.push({
@@ -414,9 +413,6 @@ export class CompensationDetector {
 
   private analyzeStepTimings(): { asymmetry: number; affectedSide: 'left' | 'right' } {
     // Simplified analysis - would need proper event detection
-    const leftStanceTimes: number[] = [];
-    const rightStanceTimes: number[] = [];
-
     // This is a simplified implementation
     // In reality, you'd use proper gait event detection
 
@@ -534,7 +530,7 @@ export class CompensationDetector {
 
     compensations.forEach(comp => {
       // Energy expenditure impact
-      const energyImpact = {
+      const energyImpact: Record<CompensationPatternType, number> = {
         circumduction: 15,
         hip_hiking: 20,
         crouch_gait: 35,
@@ -544,7 +540,7 @@ export class CompensationDetector {
       };
 
       // Mobility impact
-      const mobilityImpact = {
+      const mobilityImpact: Record<CompensationPatternType, number> = {
         stiff_knee: 25,
         crouch_gait: 30,
         antalgic: 20,
@@ -552,7 +548,7 @@ export class CompensationDetector {
       };
 
       // Fall risk impact
-      const fallRiskImpact = {
+      const fallRiskImpact: Record<CompensationPatternType, number> = {
         steppage: 40,
         foot_drop: 45,
         wide_base: 15,
