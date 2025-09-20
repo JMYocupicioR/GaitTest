@@ -150,7 +150,6 @@ export class DataService {
 
       // Create records for both sides
       ['L', 'R'].forEach(side => {
-        const advancedMetrics = sessionData.advancedMetrics;
 
         const record: Omit<GaitAnalysisRecord, 'id' | 'created_at' | 'updated_at'> = {
           patient_id: patientId,

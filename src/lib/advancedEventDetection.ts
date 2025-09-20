@@ -83,10 +83,12 @@ export class AdvancedEventDetector {
 
     if (leftEvent && this.onEventDetected) {
       this.onEventDetected({
-        ...leftEvent,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        ...leftEvent,
+        type: leftEvent.type!,
+        foot: leftEvent.foot!,
       });
     }
 
@@ -101,10 +103,12 @@ export class AdvancedEventDetector {
 
     if (rightEvent && this.onEventDetected) {
       this.onEventDetected({
-        ...rightEvent,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        ...rightEvent,
+        type: rightEvent.type!,
+        foot: rightEvent.foot!,
       });
     }
   }
@@ -125,10 +129,12 @@ export class AdvancedEventDetector {
 
     if (leftToeOff && this.onEventDetected) {
       this.onEventDetected({
-        ...leftToeOff,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        ...leftToeOff,
+        type: leftToeOff.type!,
+        foot: leftToeOff.foot!,
       });
     }
 
@@ -143,10 +149,12 @@ export class AdvancedEventDetector {
 
     if (rightToeOff && this.onEventDetected) {
       this.onEventDetected({
-        ...rightToeOff,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        ...rightToeOff,
+        type: rightToeOff.type!,
+        foot: rightToeOff.foot!,
       });
     }
   }
@@ -160,19 +168,23 @@ export class AdvancedEventDetector {
 
     if (leftFootFlat && this.onEventDetected) {
       this.onEventDetected({
-        ...leftFootFlat,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        ...leftFootFlat,
+        type: leftFootFlat.type!,
+        foot: leftFootFlat.foot!,
       });
     }
 
     if (rightFootFlat && this.onEventDetected) {
       this.onEventDetected({
-        ...rightFootFlat,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        ...rightFootFlat,
+        type: rightFootFlat.type!,
+        foot: rightFootFlat.foot!,
       });
     }
   }
@@ -197,19 +209,23 @@ export class AdvancedEventDetector {
 
     if (leftHeelOff && this.onEventDetected) {
       this.onEventDetected({
-        ...leftHeelOff,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        ...leftHeelOff,
+        type: leftHeelOff.type!,
+        foot: leftHeelOff.foot!,
       });
     }
 
     if (rightHeelOff && this.onEventDetected) {
       this.onEventDetected({
-        ...rightHeelOff,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        ...rightHeelOff,
+        type: rightHeelOff.type!,
+        foot: rightHeelOff.foot!,
       });
     }
   }
@@ -223,19 +239,23 @@ export class AdvancedEventDetector {
 
     if (leftMaxFlex && this.onEventDetected) {
       this.onEventDetected({
-        ...leftMaxFlex,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        ...leftMaxFlex,
+        type: leftMaxFlex.type!,
+        foot: leftMaxFlex.foot!,
       });
     }
 
     if (rightMaxFlex && this.onEventDetected) {
       this.onEventDetected({
-        ...rightMaxFlex,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        ...rightMaxFlex,
+        type: rightMaxFlex.type!,
+        foot: rightMaxFlex.foot!,
       });
     }
   }
@@ -249,19 +269,23 @@ export class AdvancedEventDetector {
 
     if (leftMaxExt && this.onEventDetected) {
       this.onEventDetected({
-        ...leftMaxExt,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        ...leftMaxExt,
+        type: leftMaxExt.type!,
+        foot: leftMaxExt.foot!,
       });
     }
 
     if (rightMaxExt && this.onEventDetected) {
       this.onEventDetected({
-        ...rightMaxExt,
         timestamp: currentFrame.timestamp,
         frame: currentFrame,
-        source: 'pose_estimation'
+        source: 'pose_estimation',
+        ...rightMaxExt,
+        type: rightMaxExt.type!,
+        foot: rightMaxExt.foot!,
       });
     }
   }

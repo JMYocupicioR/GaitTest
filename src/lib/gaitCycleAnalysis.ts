@@ -1,5 +1,4 @@
-import type { AdvancedMetrics } from '../types/session.ts';
-import type { GaitCycle, DetectedGaitEvent } from './advancedEventDetection.ts';
+import type { GaitCycle } from './advancedEventDetection.ts';
 
 export interface GaitCycleMetrics {
   // Temporal parameters

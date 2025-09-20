@@ -13,6 +13,7 @@ export class OGSAnalyzer {
   calculateOGSFinalScore(
     leftScore: OGSScore,
     rightScore: OGSScore,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     sessionData: SessionData,
     advancedMetrics?: AdvancedMetrics,
     kinematics?: KinematicSummary,
@@ -245,7 +246,7 @@ export class OGSAnalyzer {
         const score = foot === 'L' ? leftScore : rightScore;
 
         // Mapear desviaciones cinemáticas a ítems OGS
-        if (deviation.joint === 'knee' && deviation.phase === 'stance') {
+        if (deviation.joint === 'knee' && deviation.plane === 'sagittal') {
           const kneeOGSScore = (score.midStance ?? 0) + (score.terminalStance ?? 0);
           if (kneeOGSScore <= 2 && deviation.severity === 'severe') {
             correlations.push({
@@ -261,7 +262,7 @@ export class OGSAnalyzer {
 
         if (deviation.joint === 'ankle') {
           const ankleOGSScore = (score.initialFootContact ?? 0) + (score.loadingResponse ?? 0);
-          if (ankleOGSScore <= 2 && deviation.severity !== 'normal') {
+          if (ankleOGSScore <= 2 && deviation.severity !== 'mild') {
             correlations.push({
               parameter: `Cinemática de tobillo ${deviation.side}`,
               ogsItem: 'initialFootContact',
