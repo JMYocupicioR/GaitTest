@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../state/sessionStore.ts';
-import { formatCadence, formatMeters, formatMetersPerSecond, formatPercentage, formatSeconds } from '../lib/format.ts';
+import { formatCadence, formatMetersPerSecond, formatSeconds } from '../lib/format.ts';
 import { OGSValidationPanel } from '../components/OGSValidationPanel.tsx';
 import { LongitudinalAnalysis } from '../components/LongitudinalAnalysis.tsx';
 import { PatientSearch } from '../components/PatientSearch.tsx';

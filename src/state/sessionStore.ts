@@ -8,7 +8,6 @@ import type {
   ReportSummary,
   SessionData,
   SessionMetrics,
-  AdvancedMetrics,
   OGSScore,
 } from '../types/session.ts';
 import { computeMetrics } from '../lib/metrics.ts';
