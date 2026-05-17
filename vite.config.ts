@@ -60,5 +60,9 @@ export default defineConfig({
       },
     },
   },
+  worker: {
+    // Workers using module + code-splitting require ES format (not IIFE/UMD).
+    format: 'es',
+  },
 });
 
