@@ -13,6 +13,22 @@ import { PhaseHeatmap } from '../components/PhaseHeatmap.tsx';
 import { buildSymmetryRadar } from '../lib/symmetryRadar.ts';
 import { useAuth } from '../hooks/useAuth.ts';
 
+const MAX_VISIBILITY_POINTS = 240;
+const MAX_TIMELINE_MARKERS = 300;
+const MAX_EVENT_CHIPS = 120;
+const MAX_CHART_POINTS = 180;
+
+function sampleArray<T>(items: readonly T[], maxItems: number): T[] {
+  if (items.length <= maxItems) return [...items];
+  const step = (items.length - 1) / (maxItems - 1);
+  return Array.from({ length: maxItems }, (_, index) => items[Math.round(index * step)]);
+}
+
+function sampleNumericSeries(series: readonly number[] | null | undefined): number[] | null {
+  if (!series?.length) return null;
+  return sampleArray(series, MAX_CHART_POINTS);
+}
+
 export const ResultsScreen = () => {
   const navigate = useNavigate();
   const session = useSessionStore((state) => state.session);
@@ -24,7 +40,8 @@ export const ResultsScreen = () => {
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
   const [selectedPatientName, setSelectedPatientName] = useState<string>('');
   const [saving, setSaving] = useState(false);
-  const [showSkeleton, setShowSkeleton] = useState(true);
+  const [showSkeleton, setShowSkeleton] = useState(false);
+  const [advancedVisualsReady, setAdvancedVisualsReady] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoDuration, setVideoDuration] = useState(0);
   const [videoTime, setVideoTime] = useState(0);
@@ -49,7 +66,8 @@ export const ResultsScreen = () => {
     const frames = session.poseFrames ?? [];
     if (!frames.length) return [] as Array<{ t: number; v: number }>;
     const key = [11, 12, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32];
-    return frames.map((frame) => ({
+    const sampledFrames = sampleArray(frames, MAX_VISIBILITY_POINTS);
+    return sampledFrames.map((frame) => ({
       t: frame.timestamp,
       v: key.reduce((sum, idx) => sum + (frame.landmarks?.[idx]?.visibility ?? 0), 0) / key.length,
     }));
@@ -58,6 +76,44 @@ export const ResultsScreen = () => {
     () => [...session.events].sort((a, b) => a.timestamp - b.timestamp),
     [session.events],
   );
+  const timelineEvents = useMemo(
+    () => sampleArray(sortedEvents, MAX_TIMELINE_MARKERS),
+    [sortedEvents],
+  );
+  const eventChips = useMemo(
+    () => sortedEvents.slice(0, MAX_EVENT_CHIPS),
+    [sortedEvents],
+  );
+  const hiddenEventCount = Math.max(0, sortedEvents.length - eventChips.length);
+  const kinematicChartData = useMemo(() => {
+    const sagittal = session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal;
+    return {
+      hipLeft: sampleNumericSeries(
+        sagittal?.hipFlexion?.left?.summary?.normalizedCycles?.mean101 ??
+        sagittal?.hipFlexion?.left?.series?.angles,
+      ),
+      hipRight: sampleNumericSeries(
+        sagittal?.hipFlexion?.right?.summary?.normalizedCycles?.mean101 ??
+        sagittal?.hipFlexion?.right?.series?.angles,
+      ),
+      kneeLeft: sampleNumericSeries(
+        sagittal?.kneeFlexion?.left?.summary?.normalizedCycles?.mean101 ??
+        sagittal?.kneeFlexion?.left?.series?.angles,
+      ),
+      kneeRight: sampleNumericSeries(
+        sagittal?.kneeFlexion?.right?.summary?.normalizedCycles?.mean101 ??
+        sagittal?.kneeFlexion?.right?.series?.angles,
+      ),
+      ankleLeft: sampleNumericSeries(
+        sagittal?.ankleFlexion?.left?.summary?.normalizedCycles?.mean101 ??
+        sagittal?.ankleFlexion?.left?.series?.angles,
+      ),
+      ankleRight: sampleNumericSeries(
+        sagittal?.ankleFlexion?.right?.summary?.normalizedCycles?.mean101 ??
+        sagittal?.ankleFlexion?.right?.series?.angles,
+      ),
+    };
+  }, [session.enhancedAnalysisResult?.kinematicSummary]);
   const timelineDuration = useMemo(() => {
     const fromVideo = videoDuration > 0 ? videoDuration : 0;
     const fromQuality = session.quality.durationSeconds ?? 0;
@@ -74,6 +130,11 @@ export const ResultsScreen = () => {
       URL.revokeObjectURL(videoUrl);
     }
   }, [videoUrl]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setAdvancedVisualsReady(true), 250);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -170,12 +231,12 @@ export const ResultsScreen = () => {
           {sortedEvents.length > 0 && (
             <>
               <div className="event-timeline">
-                <div className="event-track">
+                <div className="event-track results-event-track">
                   <div
                     className="event-playhead"
                     style={{ left: `${Math.min(100, (videoTime / timelineDuration) * 100)}%` }}
                   />
-                  {sortedEvents.map((event) => (
+                  {timelineEvents.map((event) => (
                     <button
                       key={event.id}
                       type="button"
@@ -192,7 +253,7 @@ export const ResultsScreen = () => {
                 </div>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                {sortedEvents.map((event) => (
+                {eventChips.map((event) => (
                   <button
                     key={`chip-${event.id}`}
                     type="button"
@@ -204,6 +265,11 @@ export const ResultsScreen = () => {
                     {event.timestamp.toFixed(2)}s
                   </button>
                 ))}
+                {hiddenEventCount > 0 && (
+                  <span className="badge medium">
+                    +{hiddenEventCount} eventos ocultos para rendimiento
+                  </span>
+                )}
               </div>
             </>
           )}
@@ -314,69 +380,54 @@ export const ResultsScreen = () => {
         />
       )}
 
-      {/* ─── Visualización de Fases de la Marcha ─── */}
-      <GaitPhaseDiagram
-        ogsLeft={session.ogs?.leftScore}
-        ogsRight={session.ogs?.rightScore}
-      />
+      {advancedVisualsReady ? (
+        <>
+          {/* ─── Visualización de Fases de la Marcha ─── */}
+          <GaitPhaseDiagram
+            ogsLeft={session.ogs?.leftScore}
+            ogsRight={session.ogs?.rightScore}
+          />
 
-      {/* ─── Cinemática Articular ─── */}
-      <section className="card" style={{ display: 'grid', gap: '0.75rem' }}>
-        <h2>Cinemática Articular</h2>
-        <p className="helper-text">
-          Ángulos articulares (azul=izq, rojo=der) con bandas normativas (gris ±1 DE)
-        </p>
-        <KinematicChartCanvas
-          jointIndex={0}
-          patientProfile={session.patient}
-          patientDataLeft={
-            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.hipFlexion?.left?.summary?.normalizedCycles?.mean101 ??
-            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.hipFlexion?.left?.series?.angles ??
-            null
-          }
-          patientDataRight={
-            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.hipFlexion?.right?.summary?.normalizedCycles?.mean101 ??
-            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.hipFlexion?.right?.series?.angles ??
-            null
-          }
-        />
-        <KinematicChartCanvas
-          jointIndex={1}
-          patientProfile={session.patient}
-          patientDataLeft={
-            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.kneeFlexion?.left?.summary?.normalizedCycles?.mean101 ??
-            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.kneeFlexion?.left?.series?.angles ??
-            null
-          }
-          patientDataRight={
-            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.kneeFlexion?.right?.summary?.normalizedCycles?.mean101 ??
-            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.kneeFlexion?.right?.series?.angles ??
-            null
-          }
-        />
-        <KinematicChartCanvas
-          jointIndex={2}
-          patientProfile={session.patient}
-          patientDataLeft={
-            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.ankleFlexion?.left?.summary?.normalizedCycles?.mean101 ??
-            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.ankleFlexion?.left?.series?.angles ??
-            null
-          }
-          patientDataRight={
-            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.ankleFlexion?.right?.summary?.normalizedCycles?.mean101 ??
-            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.ankleFlexion?.right?.series?.angles ??
-            null
-          }
-        />
-      </section>
+          {/* ─── Cinemática Articular ─── */}
+          <section className="card" style={{ display: 'grid', gap: '0.75rem' }}>
+            <h2>Cinemática Articular</h2>
+            <p className="helper-text">
+              Ángulos articulares (azul=izq, rojo=der) con bandas normativas (gris ±1 DE)
+            </p>
+            <KinematicChartCanvas
+              jointIndex={0}
+              patientProfile={session.patient}
+              patientDataLeft={kinematicChartData.hipLeft}
+              patientDataRight={kinematicChartData.hipRight}
+            />
+            <KinematicChartCanvas
+              jointIndex={1}
+              patientProfile={session.patient}
+              patientDataLeft={kinematicChartData.kneeLeft}
+              patientDataRight={kinematicChartData.kneeRight}
+            />
+            <KinematicChartCanvas
+              jointIndex={2}
+              patientProfile={session.patient}
+              patientDataLeft={kinematicChartData.ankleLeft}
+              patientDataRight={kinematicChartData.ankleRight}
+            />
+          </section>
 
-      <section className="card" style={{ display: 'grid', gap: '0.75rem' }}>
-        <h2>Simetría y fases</h2>
-        <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
-          <SymmetryRadarChart data={symmetryRadarData} />
-          <PhaseHeatmap summary={session.enhancedAnalysisResult?.kinematicSummary} />
-        </div>
-      </section>
+          <section className="card" style={{ display: 'grid', gap: '0.75rem' }}>
+            <h2>Simetría y fases</h2>
+            <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+              <SymmetryRadarChart data={symmetryRadarData} />
+              <PhaseHeatmap summary={session.enhancedAnalysisResult?.kinematicSummary} />
+            </div>
+          </section>
+        </>
+      ) : (
+        <section className="card">
+          <h2>Visualizaciones avanzadas</h2>
+          <p className="helper-text">Preparando gráficas sin bloquear la página...</p>
+        </section>
+      )}
 
       {/* Almacenamiento y análisis longitudinal */}
       <section className="card">

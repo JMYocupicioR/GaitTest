@@ -166,7 +166,7 @@ export class KinematicExtractor {
     cadence_norm: number | null;
     leg_len: number | null;
   } {
-    const height = sessionData.patient?.height || null;
+    const height = sessionData.patient?.height ?? sessionData.derivedBiometrics?.effectiveHeightCm ?? null;
     const legLength = this.estimateLegLength(sessionData);
 
     let speed_norm = null;
@@ -207,6 +207,11 @@ export class KinematicExtractor {
    * Estima longitud de pierna
    */
   private estimateLegLength(sessionData: SessionData): number | null {
+    const derivedLegLength = sessionData.derivedBiometrics?.legLengthCm;
+    if (derivedLegLength && Number.isFinite(derivedLegLength) && derivedLegLength > 0) {
+      return derivedLegLength;
+    }
+
     const height = sessionData.patient?.height;
     if (!height) return null;
 

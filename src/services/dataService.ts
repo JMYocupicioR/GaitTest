@@ -74,13 +74,50 @@ export class DataService {
         patient_age: sessionData.patient?.age || undefined,
         patient_height: sessionData.patient?.height || undefined,
         patient_weight: sessionData.patient?.weight || undefined,
+        estimated_height:
+          sessionData.patient?.estimatedHeight ??
+          sessionData.derivedBiometrics?.estimatedHeightCm ??
+          undefined,
+        height_source:
+          sessionData.patient?.heightSource ??
+          sessionData.derivedBiometrics?.heightSource ??
+          undefined,
+        leg_length_derived: sessionData.derivedBiometrics?.legLengthCm ?? undefined,
+        bmi_derived:
+          sessionData.derivedBiometrics?.bmi ??
+          (sessionData.patient?.height && sessionData.patient?.weight
+            ? sessionData.patient.weight / Math.pow(sessionData.patient.height / 100, 2)
+            : undefined),
       };
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('session_records')
         .insert(sessionRecord)
         .select('id')
         .single();
+
+      if (error && /column .* does not exist/i.test(error.message ?? '')) {
+        // Backward compatibility for DBs not yet migrated with derived biometric columns.
+        const {
+          estimated_height: _estimatedHeight,
+          height_source: _heightSource,
+          leg_length_derived: _legLengthDerived,
+          bmi_derived: _bmiDerived,
+          ...legacySessionRecord
+        } = sessionRecord as SessionRecord;
+        void _estimatedHeight;
+        void _heightSource;
+        void _legLengthDerived;
+        void _bmiDerived;
+
+        const legacyInsert = await supabase
+          .from('session_records')
+          .insert(legacySessionRecord)
+          .select('id')
+          .single();
+        data = legacyInsert.data;
+        error = legacyInsert.error;
+      }
 
       if (error) {
         console.error('Error saving session:', error);
@@ -93,7 +130,7 @@ export class DataService {
         this.saveKeyFrames(sessionData, userId, examId),
       ]);
 
-      return data.id;
+      return data?.id ?? null;
     } catch (error) {
       console.error('Error saving session:', error);
       return null;
@@ -148,16 +185,28 @@ export class DataService {
 
           // Patient characteristics
           age: sessionData.patient?.age || undefined,
-          height: sessionData.patient?.height || undefined,
-          mass: sessionData.patient?.weight || undefined,
+          height:
+            sessionData.patient?.height ??
+            sessionData.derivedBiometrics?.effectiveHeightCm ??
+            undefined,
+          mass:
+            sessionData.patient?.weight ??
+            sessionData.derivedBiometrics?.weightKg ??
+            undefined,
 
           // Gait parameters
           cadence: sessionData.metrics.cadenceSpm || undefined,
           speed: sessionData.metrics.speedMps || undefined,
           step_len: sessionData.metrics.stepLengthMeters || undefined,
-          leg_len: kinematicValues.leg_len ?? undefined,
-          bmi: sessionData.patient?.height && sessionData.patient?.weight ?
-               sessionData.patient.weight / Math.pow(sessionData.patient.height / 100, 2) : undefined,
+          leg_len:
+            sessionData.derivedBiometrics?.legLengthCm ??
+            kinematicValues.leg_len ??
+            undefined,
+          bmi:
+            sessionData.derivedBiometrics?.bmi ??
+            (sessionData.patient?.height && sessionData.patient?.weight
+              ? sessionData.patient.weight / Math.pow(sessionData.patient.height / 100, 2)
+              : undefined),
           speed_norm: kinematicValues.speed_norm ?? undefined,
           step_len_norm: kinematicValues.step_len_norm ?? undefined,
           cadence_norm: kinematicValues.cadence_norm ?? undefined,

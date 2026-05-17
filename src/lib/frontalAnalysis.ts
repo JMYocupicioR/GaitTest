@@ -41,9 +41,16 @@ export interface FrontalCompensation {
   clinicalImplication: string;
 }
 
+export interface FrontalGaitAnalyzerOptions {
+  scaleMetersPerNorm?: number;
+  trunkHeightNorm?: number;
+}
+
 export class FrontalGaitAnalyzer {
   private frameBuffer: PoseFrame[] = [];
   private detectedCompensations: FrontalCompensation[] = [];
+  private readonly scaleMetersPerNorm: number;
+  private readonly trunkHeightNorm: number;
 
   // Clinical thresholds based on literature
   private static readonly THRESHOLDS = {
@@ -69,6 +76,11 @@ export class FrontalGaitAnalyzer {
     },
     variabilityThreshold: 15 // CV%
   };
+
+  constructor(options: FrontalGaitAnalyzerOptions = {}) {
+    this.scaleMetersPerNorm = options.scaleMetersPerNorm ?? 1.8;
+    this.trunkHeightNorm = options.trunkHeightNorm ?? 0.3;
+  }
 
   public processFrame(frame: PoseFrame): void {
     this.frameBuffer.push(frame);
@@ -141,8 +153,7 @@ export class FrontalGaitAnalyzer {
     for (const frame of this.frameBuffer) {
       if (frame.leftAnkle.visibility > 0.7 && frame.rightAnkle.visibility > 0.7) {
         const width = Math.abs(frame.leftAnkle.x - frame.rightAnkle.x);
-        // Convert normalized coordinates to approximate meters (assuming 640px ≈ 1.8m frame width)
-        const widthMeters = width * 1.8;
+        const widthMeters = width * this.scaleMetersPerNorm;
         stepWidths.push(widthMeters);
       }
     }
@@ -157,7 +168,7 @@ export class FrontalGaitAnalyzer {
 
     for (const frame of this.frameBuffer) {
       if (frame.leftAnkle.visibility > 0.7 && frame.rightAnkle.visibility > 0.7) {
-        const width = Math.abs(frame.leftAnkle.x - frame.rightAnkle.x) * 1.8;
+        const width = Math.abs(frame.leftAnkle.x - frame.rightAnkle.x) * this.scaleMetersPerNorm;
         stepWidths.push(width);
       }
     }
@@ -186,7 +197,7 @@ export class FrontalGaitAnalyzer {
         // Approximate shoulder position (not available in basic pose estimation)
         const shoulderEstimate = {
           x: hipMidpoint.x,
-          y: hipMidpoint.y - 0.3 // Approximate trunk length
+          y: hipMidpoint.y - this.trunkHeightNorm,
         };
 
         // Calculate lean angle from vertical
@@ -216,7 +227,7 @@ export class FrontalGaitAnalyzer {
 
         const leanAngle = Math.atan2(
           Math.abs(hipMidpoint.x - 0.5), // Deviation from center
-          0.3 // Estimated trunk height
+          this.trunkHeightNorm,
         ) * 180 / Math.PI;
 
         leanAngles.push(leanAngle);
@@ -453,7 +464,7 @@ export class FrontalGaitAnalyzer {
     if (lateralPositions.length < 2) return null;
 
     const maxDisplacement = Math.max(...lateralPositions) - Math.min(...lateralPositions);
-    return maxDisplacement * 1.8; // Convert to meters
+    return maxDisplacement * this.scaleMetersPerNorm;
   }
 
   private calculateLateralAsymmetryIndex(): number | null {

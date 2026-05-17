@@ -8,6 +8,12 @@ interface AnalyzeRequest {
     patient?: {
       identifier?: string;
       age?: number;
+      sex?: 'male' | 'female' | 'other';
+      height?: number;
+      weight?: number;
+      gender?: 'M' | 'F';
+      diagnosis?: string;
+      referringPhysician?: string;
     };
   };
 }
@@ -21,6 +27,18 @@ self.onmessage = async (event: MessageEvent<AnalyzeRequest>) => {
     const analyzer = new EnhancedGaitAnalyzer();
     const result = await analyzer.performCompleteAnalysis(request.payload);
     const reportGen = new MedicalReportGenerator();
+    const patientForReport = request.payload.patient
+      ? {
+          ...request.payload.patient,
+          gender:
+            request.payload.patient.gender ??
+            (request.payload.patient.sex === 'female'
+              ? 'F'
+              : request.payload.patient.sex === 'male'
+                ? 'M'
+                : undefined),
+        }
+      : undefined;
     const medReport = reportGen.generateComprehensiveReport(
       result.advancedMetrics,
       result.kinematicSummary,
@@ -30,7 +48,7 @@ self.onmessage = async (event: MessageEvent<AnalyzeRequest>) => {
       result.detectedGaitCycles,
       result.detailedKinematics,
       request.payload.ogs as never,
-      request.payload.patient,
+      patientForReport,
     );
     self.postMessage({
       type: 'result',

@@ -12,6 +12,7 @@ const calibrationOptions = [
 
 export const CalibrationScreen = () => {
   const navigate = useNavigate();
+  const patient = useSessionStore((state) => state.session.patient);
   const captureSettings = useSessionStore((state) => state.session.captureSettings);
   const setCaptureSettings = useSessionStore((state) => state.setCaptureSettings);
   const [distanceMeters, setDistanceMeters] = useState<number>(captureSettings.distanceMeters ?? 5);
@@ -108,6 +109,18 @@ export const CalibrationScreen = () => {
         <h1>Define tu referencia</h1>
         <p>Usa la línea de 5 metros para traducir la velocidad real. Más adelante añadiremos opciones con objetos.</p>
       </header>
+
+      {patient?.height != null && (
+        <section className="card patient-summary-card" aria-label="Resumen del paciente">
+          <h2>Paciente</h2>
+          <p className="helper-text" style={{ margin: 0 }}>
+            {patient.name ? `${patient.name} · ` : ''}
+            Estatura {patient.height} cm
+            {patient.weight != null ? ` · Peso ${patient.weight} kg` : ''}
+            {patient.age != null ? ` · ${patient.age} años` : ''}
+          </p>
+        </section>
+      )}
 
       <section className="card">
         <div className="form-section">

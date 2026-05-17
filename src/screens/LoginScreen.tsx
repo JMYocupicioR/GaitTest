@@ -42,7 +42,7 @@ export const LoginScreen = () => {
 
   useEffect(() => {
     if (!loading && user) {
-      navigate('/start', { replace: true });
+      navigate('/start?new=1', { replace: true });
     }
   }, [loading, navigate, user]);
 
@@ -57,7 +57,7 @@ export const LoginScreen = () => {
         setErrorMessage(error.message);
         return;
       }
-      navigate('/start', { replace: true });
+      navigate('/start?new=1', { replace: true });
     } finally {
       setSubmitting(false);
     }

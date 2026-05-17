@@ -1,5 +1,12 @@
-﻿import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+﻿import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  PatientBiometricsForm,
+  emptyPatientBiometrics,
+  patientBiometricsFromSession,
+  patientBiometricsToStorePayload,
+  type PatientBiometricsValues,
+} from '../components/PatientBiometricsForm.tsx';
 import { useSessionStore } from '../state/sessionStore.ts';
 
 const VIEW_OPTIONS = [
@@ -18,19 +25,34 @@ const captureChecklist = [
 
 export const StartScreen = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const resetSession = useSessionStore((state) => state.resetSession);
   const setCaptureSettings = useSessionStore((state) => state.setCaptureSettings);
+  const setPatientInfo = useSessionStore((state) => state.setPatientInfo);
+  const sessionPatient = useSessionStore((state) => state.session.patient);
   const [selectedView, setSelectedView] = useState<ViewOptionId>('lateral');
   const [consent, setConsent] = useState(false);
+  const [patientForm, setPatientForm] = useState<PatientBiometricsValues>(() =>
+    patientBiometricsFromSession(sessionPatient),
+  );
 
   useEffect(() => {
-    resetSession();
-  }, [resetSession]);
+    if (searchParams.get('new') === '1') {
+      resetSession();
+      setPatientForm(emptyPatientBiometrics());
+    }
+  }, [resetSession, searchParams]);
+
+  const patientFormValid = useMemo(
+    () => patientForm.height !== '' && patientForm.height >= 50 && patientForm.height <= 230,
+    [patientForm.height],
+  );
 
   const handleContinue = () => {
-    if (!consent) {
+    if (!consent || !patientFormValid) {
       return;
     }
+    setPatientInfo(patientBiometricsToStorePayload(patientForm));
     setCaptureSettings({ viewMode: selectedView, calibrationType: 'line' });
     navigate('/calibration');
   };
@@ -45,6 +67,19 @@ export const StartScreen = () => {
           cadencia y asimetría y genera un informe clínico orientativo.
         </p>
       </header>
+
+      <section className="card" style={{ display: 'grid', gap: '1rem' }}>
+        <h2>Datos del paciente</h2>
+        <p className="helper-text">
+          Ingresa la estatura antes de grabar. Se mostrará en tiempo real durante la captura del video.
+        </p>
+        <PatientBiometricsForm
+          values={patientForm}
+          onChange={setPatientForm}
+          requireHeight
+          showIdentityFields
+        />
+      </section>
 
       <section className="card">
         <h2>Selecciona la vista</h2>
@@ -92,7 +127,12 @@ export const StartScreen = () => {
         <button type="button" className="secondary-button" onClick={() => navigate('/longitudinal')}>
           Análisis longitudinal
         </button>
-        <button type="button" className="primary-button" disabled={!consent} onClick={handleContinue}>
+        <button
+          type="button"
+          className="primary-button"
+          disabled={!consent || !patientFormValid}
+          onClick={handleContinue}
+        >
           Continuar a calibración
         </button>
       </div>

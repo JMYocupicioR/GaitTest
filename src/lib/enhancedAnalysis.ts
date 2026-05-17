@@ -10,8 +10,8 @@ import { AdvancedEventDetector } from './advancedEventDetection.ts';
 import type { DetectedGaitEvent, GaitCycle } from './advancedEventDetection.ts';
 import { GaitCycleAnalyzer } from './gaitCycleAnalysis.ts';
 import type { GaitCycleComparison } from './gaitCycleAnalysis.ts';
-import { applyLandmarkFiltering } from './signalProcessing.ts';
-import type { DetailedKinematics, KinematicSummary } from '../types/session.ts';
+import { postProcessPoseFrames } from './postProcessSkeleton.ts';
+import type { DetailedKinematics, KinematicSummary, ProcessedSkeleton } from '../types/session.ts';
 import type {
   GaitEvent,
   CaptureSettings,
@@ -19,6 +19,7 @@ import type {
   ObservationChecklist,
   AdvancedMetrics,
   ClinicalAnalysisSnapshot,
+  DerivedBiometrics,
   PatternFlag,
   SessionMetrics,
 } from '../types/session.ts';
@@ -32,6 +33,7 @@ export interface EnhancedAnalysisInput {
   quality: CaptureQuality;
   observations: ObservationChecklist;
   poseFrames?: PoseFrame[];
+  derivedBiometrics?: DerivedBiometrics;
 }
 
 export interface EnhancedAnalysisResult {
@@ -55,6 +57,7 @@ export interface EnhancedAnalysisResult {
   frontalMetrics?: FrontalMetrics;
   cycleAnalysis?: GaitCycleComparison;
   detectedGaitCycles?: GaitCycle[];
+  processedSkeleton?: ProcessedSkeleton;
   /** Rellenado en sessionStore tras MedicalReportGenerator (mismo que PDF/BD). */
   pathologyAnalysis?: ClinicalAnalysisSnapshot['pathologyAnalysis'];
 }
@@ -81,16 +84,6 @@ export class EnhancedGaitAnalyzer {
     });
 
     // 2. Advanced metrics calculation
-    const advancedMetrics = computeAdvancedMetrics({
-      events: input.events,
-      distanceMeters: input.captureSettings.distanceMeters,
-      durationSeconds: input.quality.durationSeconds,
-      poseFrames: input.poseFrames || [],
-      baseMetrics: basicMetrics,
-      frameGroundWidthMeters: input.captureSettings.frameGroundWidthMeters ?? null,
-      pxPerMeter: input.captureSettings.pxPerMeter ?? null,
-    });
-
     let detailedKinematics: DetailedKinematics | undefined;
     let kinematicSummary: KinematicSummary | undefined;
     let kinematicReport: string | undefined;
@@ -103,18 +96,54 @@ export class EnhancedGaitAnalyzer {
       (input.quality.fpsDetected && Number.isFinite(input.quality.fpsDetected)
         ? input.quality.fpsDetected
         : input.captureSettings.targetFps) || 30;
-    const filteredPoseFrames =
+    const processedSkeleton =
       input.poseFrames && input.poseFrames.length > 0
-        ? applyLandmarkFiltering(input.poseFrames, 6, fpsForFiltering)
-        : [];
+        ? postProcessPoseFrames(input.poseFrames, {
+            sampleRateHz: fpsForFiltering,
+            filterCutoffHz: 6,
+            interpolationVisibilityThreshold: 0.5,
+            interpolationMaxGapFrames: 6,
+            enforceRigidBones: true,
+          })
+        : undefined;
+    const processedPoseFrames = processedSkeleton?.frames ?? [];
 
-    if (filteredPoseFrames.length >= 10) {
+    const advancedMetrics = computeAdvancedMetrics({
+      events: input.events,
+      distanceMeters: input.captureSettings.distanceMeters,
+      durationSeconds: input.quality.durationSeconds,
+      poseFrames: processedPoseFrames,
+      processedSkeleton,
+      baseMetrics: basicMetrics,
+      frameGroundWidthMeters: input.captureSettings.frameGroundWidthMeters ?? null,
+      pxPerMeter: input.captureSettings.pxPerMeter ?? null,
+      derivedBiometrics: input.derivedBiometrics,
+    });
+
+    if (processedPoseFrames.length >= 10) {
       const kinematicAnalyzer = new KinematicAnalyzer(input.captureSettings.viewMode);
-      filteredPoseFrames.forEach(frame => kinematicAnalyzer.processFrame(frame));
+      processedPoseFrames.forEach(frame => kinematicAnalyzer.processFrame(frame));
       detailedKinematics = kinematicAnalyzer.calculateDetailedKinematics();
 
-      const frontalAnalyzer = new FrontalGaitAnalyzer();
-      filteredPoseFrames.forEach(frame => frontalAnalyzer.processFrame(frame));
+      const scaleMetersPerNorm =
+        input.derivedBiometrics?.frameGroundWidthMeters ??
+        input.captureSettings.frameGroundWidthMeters ??
+        1.8;
+      const frameGroundHeightMeters = scaleMetersPerNorm * (720 / 1280);
+      const trunkHeightMeters =
+        input.derivedBiometrics?.effectiveHeightCm != null
+          ? (input.derivedBiometrics.effectiveHeightCm * 0.3) / 100
+          : null;
+      const trunkHeightNorm =
+        trunkHeightMeters != null && frameGroundHeightMeters > 0
+          ? Math.min(0.8, Math.max(0.2, trunkHeightMeters / frameGroundHeightMeters))
+          : undefined;
+
+      const frontalAnalyzer = new FrontalGaitAnalyzer({
+        scaleMetersPerNorm,
+        trunkHeightNorm,
+      });
+      processedPoseFrames.forEach(frame => frontalAnalyzer.processFrame(frame));
       frontalMetrics = frontalAnalyzer.calculateFrontalMetrics();
 
       const eventDetector = new AdvancedEventDetector();
@@ -122,14 +151,14 @@ export class EnhancedGaitAnalyzer {
       eventDetector.setEventCallback((event) => {
         detectedEvents.push(event);
       });
-      filteredPoseFrames.forEach(frame => eventDetector.processFrame(frame));
+      processedPoseFrames.forEach(frame => eventDetector.processFrame(frame));
       detectedGaitCycles = eventDetector.generateGaitCycles(detectedEvents);
 
       kinematicSummary = kinematicAnalyzer.generateKinematicSummary(detailedKinematics, detectedGaitCycles);
       kinematicReport = kinematicAnalyzer.generateKinematicReport(kinematicSummary);
 
       const compensationDetector = new CompensationDetector(input.captureSettings.viewMode);
-      filteredPoseFrames.forEach(frame => compensationDetector.processFrame(frame));
+      processedPoseFrames.forEach(frame => compensationDetector.processFrame(frame));
       compensationAnalysis = compensationDetector.detectCompensations(kinematicSummary, frontalMetrics);
 
       if (detectedGaitCycles.length > 1) {
@@ -163,7 +192,7 @@ export class EnhancedGaitAnalyzer {
     const riskAssessment = mlDetector.assessFallRisk(advancedMetrics);
 
     // 7. Quality assessment
-    const qualityScore = this.calculateQualityScore(input.quality, input.events, filteredPoseFrames);
+    const qualityScore = this.calculateQualityScore(input.quality, input.events, processedPoseFrames);
 
     const processingTime = performance.now() - startTime;
 
@@ -182,7 +211,8 @@ export class EnhancedGaitAnalyzer {
       compensationAnalysis,
       frontalMetrics,
       cycleAnalysis,
-      detectedGaitCycles
+      detectedGaitCycles,
+      processedSkeleton,
     };
   }
 

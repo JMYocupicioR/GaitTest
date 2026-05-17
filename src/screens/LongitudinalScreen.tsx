@@ -70,7 +70,7 @@ export const LongitudinalScreen = () => {
         <div className="card" style={{ textAlign: 'center' }}>
           <h2 style={{ color: '#dc2626' }}>Error</h2>
           <p>{error}</p>
-          <button onClick={() => navigate('/start')} className="primary-button">
+          <button onClick={() => navigate('/start?new=1')} className="primary-button">
             Volver al inicio
           </button>
         </div>
@@ -321,7 +321,7 @@ export const LongitudinalScreen = () => {
         <button
           type="button"
           className="secondary-button"
-          onClick={() => navigate('/start')}
+          onClick={() => navigate('/start?new=1')}
         >
           Volver al inicio
         </button>

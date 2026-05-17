@@ -1,5 +1,4 @@
 import { Pose, type Results } from '@mediapipe/pose';
-import { Camera } from '@mediapipe/camera_utils';
 
 export interface PoseLandmark {
   x: number;
@@ -34,7 +33,10 @@ export interface HeelStrikeEvent {
 
 export class PoseGaitAnalyzer {
   private pose: Pose;
-  private camera: Camera | null = null;
+  private liveVideoElement: HTMLVideoElement | null = null;
+  private rafId: number | null = null;
+  private loopRunning = false;
+  private isDisposed = false;
   private isProcessing = false;
   private frameBuffer: PoseFrame[] = [];
   private pendingFrameTimestamp: number | null = null;
@@ -60,34 +62,57 @@ export class PoseGaitAnalyzer {
     this.pose.onResults(this.onPoseResults.bind(this));
   }
 
-  public async initializeCamera(videoElement: HTMLVideoElement): Promise<void> {
-    this.camera = new Camera(videoElement, {
-      onFrame: async () => {
-        if (this.isProcessing) return;
-        this.isProcessing = true;
-        await this.pose.send({ image: videoElement });
-        this.isProcessing = false;
-      },
-      width: 640,
-      height: 480
-    });
+  public setLiveVideoElement(videoElement: HTMLVideoElement | null): void {
+    this.liveVideoElement = videoElement;
   }
 
   public startAnalysis(): void {
-    if (this.camera) {
-      this.camera.start();
+    if (this.loopRunning || this.isDisposed) {
+      return;
     }
+    this.loopRunning = true;
+
+    const tick = () => {
+      if (!this.loopRunning || this.isDisposed) {
+        return;
+      }
+
+      const videoElement = this.liveVideoElement;
+      if (
+        videoElement &&
+        videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+        !this.isProcessing
+      ) {
+        this.isProcessing = true;
+        void this.pose
+          .send({ image: videoElement })
+          .catch((error) => {
+            console.warn('Pose live frame processing failed:', error);
+          })
+          .finally(() => {
+            this.isProcessing = false;
+          });
+      }
+
+      this.rafId = requestAnimationFrame(tick);
+    };
+
+    this.rafId = requestAnimationFrame(tick);
   }
 
   public stopAnalysis(): void {
-    if (this.camera) {
-      this.camera.stop();
+    this.loopRunning = false;
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
     }
+    this.isProcessing = false;
+    this.pendingFrameTimestamp = null;
     this.frameBuffer = [];
   }
 
   public async processImage(image: HTMLVideoElement | HTMLCanvasElement, timestampSeconds?: number): Promise<void> {
-    if (this.isProcessing) return;
+    if (this.isProcessing || this.isDisposed) return;
     this.isProcessing = true;
     this.pendingFrameTimestamp = Number.isFinite(timestampSeconds) ? timestampSeconds ?? null : null;
     try {
@@ -114,6 +139,7 @@ export class PoseGaitAnalyzer {
   }
 
   private onPoseResults(results: Results): void {
+    if (this.isDisposed) return;
     if (!results.poseLandmarks) return;
 
     const fromProvider = this.liveTimestampProvider?.();
@@ -278,6 +304,11 @@ export class PoseGaitAnalyzer {
 
   public async dispose(): Promise<void> {
     this.stopAnalysis();
+    this.liveVideoElement = null;
+    if (this.isDisposed) {
+      return;
+    }
+    this.isDisposed = true;
     await this.pose.close();
   }
 }

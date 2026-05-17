@@ -1,5 +1,13 @@
 # 🎯 Roadmap Prioritizado GaitTest - Próximas Implementaciones
 
+## ✅ Actualización de implementación (Mayo 2026)
+
+- Implementado pipeline FreeMoCap-style (interpolación, COM antropométrico, rigid bones).
+- Implementadas transformaciones de coordenadas clínicas y normalización de labels.
+- Implementados exportadores `.TRC` y `.MOT` en cliente.
+- Implementado flujo `.C3D` con microservicio Python + proxy Supabase Function.
+- Integrado panel de exportación clínica en pantalla de reporte.
+
 ## 📋 **PRIORIZACIÓN BASADA EN IMPACTO CLÍNICO**
 
 ### 🔥 **CRÍTICO - Implementar YA (Próximas 2-4 semanas)**

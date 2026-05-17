@@ -63,7 +63,7 @@ export const SignupScreen = () => {
 
   useEffect(() => {
     if (!loading && user) {
-      navigate('/start', { replace: true });
+      navigate('/start?new=1', { replace: true });
     }
   }, [loading, navigate, user]);
 
@@ -91,7 +91,7 @@ export const SignupScreen = () => {
         return;
       }
 
-      navigate('/start', { replace: true });
+      navigate('/start?new=1', { replace: true });
     } finally {
       setSubmitting(false);
     }

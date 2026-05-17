@@ -1,3 +1,5 @@
+import type { PoseFrame } from '../lib/poseEstimation.ts';
+
 export type ViewMode = 'lateral' | 'frontal' | 'dual';
 export type CalibrationType = 'line' | 'object' | 'manual' | 'none';
 export type QualityLevel = 'high' | 'medium' | 'low';
@@ -5,6 +7,15 @@ export type FootSide = 'L' | 'R';
 
 export type EventSource = 'auto' | 'manual';
 export type EventType = 'heel_strike' | 'toe_off' | 'foot_flat' | 'heel_off' | 'max_knee_flexion' | 'max_hip_extension';
+export type EventReviewStatus = 'pending' | 'confirmed' | 'rejected';
+export type EventQualityFlag =
+  | 'duplicate_candidate'
+  | 'out_of_order'
+  | 'low_confidence'
+  | 'missing_toe_off'
+  | 'outside_video_duration'
+  | 'insufficient_alternation'
+  | 'cadence_outlier';
 
 export interface CaptureSettings {
   viewMode: ViewMode;
@@ -37,6 +48,53 @@ export interface GaitEvent {
   type: EventType;
   source: EventSource;
   confidence: number | null;
+  reviewStatus: EventReviewStatus;
+  reviewedAtIso: string | null;
+  reviewedBy: string | null;
+  qualityFlags: EventQualityFlag[];
+  frameIndex: number | null;
+  cycleId: string | null;
+  clinicalNote: string | null;
+  userEdited: boolean;
+}
+
+export interface EventCycleSummary {
+  id: string;
+  foot: FootSide;
+  heelStrikeStartTs: number;
+  heelStrikeEndTs: number;
+  durationSeconds: number;
+  toeOffCount: number;
+}
+
+export interface EventValidationSummary {
+  isReady: boolean;
+  issues: string[];
+  warnings: string[];
+  counts: {
+    total: number;
+    heelStrikeLeft: number;
+    heelStrikeRight: number;
+    toeOffLeft: number;
+    toeOffRight: number;
+    confirmed: number;
+    rejected: number;
+    pending: number;
+  };
+  cadenceEstimateSpm: number | null;
+  meanConfidence: number | null;
+  cycleCount: number;
+  flaggedEventIds: string[];
+  flagsByEventId: Record<string, EventQualityFlag[]>;
+  cycles: EventCycleSummary[];
+}
+
+export interface ReviewSnapshot {
+  validatedAtIso: string;
+  eventValidation: EventValidationSummary;
+  suggestedFlags: PatternFlag[];
+  metricsPreview: SessionMetrics;
+  ogsCompletionPct: number;
 }
 
 export interface ObservationChecklist {
@@ -373,6 +431,74 @@ export interface ClinicalAnalysisSnapshot {
   };
 }
 
+export interface SkeletonPoint3D {
+  x: number;
+  y: number;
+  z: number;
+  visibility?: number;
+}
+
+export type SegmentEndpointRef = number | [number, number];
+
+export interface SegmentInfo {
+  name: string;
+  proximal: SegmentEndpointRef;
+  distal: SegmentEndpointRef;
+  /** Posicion del COM desde el punto proximal (0..1). */
+  comLength: number;
+  /** Masa relativa del segmento (0..1). */
+  massPercentage: number;
+}
+
+export interface BoneStatistics {
+  medianLength: number;
+  stdLength: number;
+  validFrameCount: number;
+}
+
+export type JointHierarchy = Record<number, number[]>;
+
+export interface DerivedBiometrics {
+  effectiveHeightCm: number;
+  estimatedHeightCm?: number;
+  heightSource: 'manual' | 'estimated';
+  heightConfidence: number;
+  legLengthCm: number;
+  bmi: number | null;
+  weightKg: number | null;
+  frameGroundWidthMeters: number | null;
+  pxPerMeter: number | null;
+  segmentMassesKg: Record<string, number> | null;
+}
+
+export interface ProcessedSkeleton {
+  frames: PoseFrame[];
+  segmentCOM: Record<string, Array<SkeletonPoint3D | null>>;
+  totalCOM: Array<SkeletonPoint3D | null>;
+  boneStats: Record<string, BoneStatistics>;
+  landmarkQualityScores: number[][];
+  frameQualityScores: number[];
+}
+
+/**
+ * Definiciones antropometricas simplificadas (Winter 1990) adaptadas a MediaPipe Pose.
+ * Los porcentajes se normalizan en runtime segun segmentos visibles.
+ */
+export const MEDIAPIPE_SEGMENTS_WINTER: SegmentInfo[] = [
+  { name: 'left_upper_arm', proximal: 11, distal: 13, comLength: 0.436, massPercentage: 0.028 },
+  { name: 'right_upper_arm', proximal: 12, distal: 14, comLength: 0.436, massPercentage: 0.028 },
+  { name: 'left_forearm', proximal: 13, distal: 15, comLength: 0.430, massPercentage: 0.016 },
+  { name: 'right_forearm', proximal: 14, distal: 16, comLength: 0.430, massPercentage: 0.016 },
+  { name: 'left_thigh', proximal: 23, distal: 25, comLength: 0.433, massPercentage: 0.10 },
+  { name: 'right_thigh', proximal: 24, distal: 26, comLength: 0.433, massPercentage: 0.10 },
+  { name: 'left_shank', proximal: 25, distal: 27, comLength: 0.433, massPercentage: 0.0465 },
+  { name: 'right_shank', proximal: 26, distal: 28, comLength: 0.433, massPercentage: 0.0465 },
+  { name: 'left_foot', proximal: 27, distal: 31, comLength: 0.50, massPercentage: 0.0145 },
+  { name: 'right_foot', proximal: 28, distal: 32, comLength: 0.50, massPercentage: 0.0145 },
+  { name: 'trunk', proximal: [23, 24], distal: [11, 12], comLength: 0.50, massPercentage: 0.497 },
+  { name: 'head_neck', proximal: [11, 12], distal: 0, comLength: 0.50, massPercentage: 0.081 },
+];
+
 export interface SessionData {
   sessionId: string;
   complementarySessionId?: string | null;
@@ -380,6 +506,8 @@ export interface SessionData {
   captureSettings: CaptureSettings;
   quality: CaptureQuality;
   events: GaitEvent[];
+  eventValidation: EventValidationSummary | null;
+  reviewSnapshot?: ReviewSnapshot;
   observations: ObservationChecklist;
   metrics: SessionMetrics;
   patternFlags: PatternFlag[];
@@ -391,17 +519,22 @@ export interface SessionData {
     age?: number;
     sex?: 'male' | 'female' | 'other';
     height?: number;
+    estimatedHeight?: number;
+    heightSource?: 'manual' | 'estimated';
     weight?: number;
     clinicianNote?: string;
   };
+  derivedBiometrics?: DerivedBiometrics;
   videoBlob?: Blob;
   // Enhanced analysis fields
   advancedMetrics?: AdvancedMetrics;
-  poseFrames?: any[];
+  poseFrames?: PoseFrame[];
+  processedSkeleton?: ProcessedSkeleton;
   clinicalAnalysisSnapshot?: ClinicalAnalysisSnapshot /** Snapshot post finalizeAnalysis; misma base que PDF/BD */;
   enhancedAnalysisResult?: {
     pathologyAnalysis?: ClinicalAnalysisSnapshot['pathologyAnalysis'];
     kinematicSummary?: KinematicSummary;
+    processedSkeleton?: ProcessedSkeleton;
     kinematicValues?: {
       left: {
         hip_flex_ic: number | null;

@@ -10,6 +10,28 @@
 GaitTest es una **aplicación web progresiva** que permite a un clínico capturar video de la marcha de un paciente directamente desde el navegador del móvil, ejecutar análisis biomecánicos automáticos en el dispositivo y generar reportes clínicos — sin necesidad de servidores de procesamiento ni hardware especializado.
 
 ```
+
+---
+
+## 12. Pipeline Clínico y Exportadores
+
+Se añadió un pipeline de post-procesamiento inspirado en FreeMoCap:
+
+- Interpolación de gaps (`src/lib/poseInterpolation.ts`)
+- Filtrado Butterworth (`src/lib/signalProcessing.ts`)
+- Enforzamiento de huesos rígidos (`src/lib/rigidBones.ts`)
+- COM antropométrico Winter 1990 (`src/lib/centerOfMass.ts`)
+- Orquestación unificada (`src/lib/postProcessSkeleton.ts`)
+
+Y exportadores clínicos:
+
+- `.TRC` (OpenSim): `src/lib/exporters/trcWriter.ts`
+- `.MOT` (OpenSim ExternalLoads): `src/lib/exporters/motWriter.ts`
+- `.C3D` (Visual3D/Vicon): `services/c3d-exporter/` + `supabase/functions/export-c3d/index.ts`
+
+La UI de reporte integra un panel de exportación clínica en:
+
+- `src/components/ClinicalExportPanel.tsx`
 📱 Captura → 🤖 MediaPipe Pose → 📐 Cálculos cinemáticos → 📊 Resultados → 📄 Reporte PDF
 ```
 

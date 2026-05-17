@@ -84,6 +84,10 @@ export interface SessionRecord {
   patient_age?: number;
   patient_height?: number;
   patient_weight?: number;
+  estimated_height?: number;
+  height_source?: 'manual' | 'estimated';
+  leg_length_derived?: number;
+  bmi_derived?: number;
 
   created_at?: string;
   updated_at?: string;
@@ -188,6 +192,10 @@ CREATE TABLE IF NOT EXISTS session_records (
   patient_age INTEGER,
   patient_height DECIMAL,
   patient_weight DECIMAL,
+  estimated_height DECIMAL,
+  height_source TEXT,
+  leg_length_derived DECIMAL,
+  bmi_derived DECIMAL,
   video_url TEXT,
 
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gaittest-c3d-exporter"
+version = "0.1.0"
+description = "C3D exporter service for GaitTest"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "pydantic>=2.8.0",
+  "python-jose[cryptography]>=3.3.0",
+  "ezc3d>=1.5.16",
+  "numpy>=1.26.0",
+]
+
+[tool.setuptools]
+packages = ["app"]

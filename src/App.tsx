@@ -117,15 +117,15 @@ function App() {
       <Routes>
         <Route
           path="/"
-          element={user ? <Navigate to="/start" replace /> : <LandingScreen />}
+          element={user ? <Navigate to="/start?new=1" replace /> : <LandingScreen />}
         />
         <Route
           path="/login"
-          element={user ? <Navigate to="/start" replace /> : <LoginScreen />}
+          element={user ? <Navigate to="/start?new=1" replace /> : <LoginScreen />}
         />
         <Route
           path="/signup"
-          element={user ? <Navigate to="/start" replace /> : <SignupScreen />}
+          element={user ? <Navigate to="/start?new=1" replace /> : <SignupScreen />}
         />
         <Route
           path="/start"

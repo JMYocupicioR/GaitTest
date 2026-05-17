@@ -32,6 +32,8 @@ interface UseMediaRecorderResult {
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   stopCamera: () => void;
+  /** Limpia la grabación previa para volver al estado de previsualización en directo. */
+  resetRecording: () => Promise<void>;
   recordedBlob: Blob | null;
   durationSeconds: number | null;
   fpsDetected: number | null;
@@ -54,10 +56,26 @@ export const useMediaRecorder = ({ targetFps, videoRef }: UseMediaRecorderOption
     mediaStreamRef.current = null;
   }, []);
 
+  const attachStreamToVideo = useCallback(async (stream: MediaStream) => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (el.srcObject !== stream) {
+      el.srcObject = stream;
+    }
+    try {
+      if (el.paused) {
+        await el.play();
+      }
+    } catch (err) {
+      console.warn('No se pudo reproducir la previsualización en directo:', err);
+    }
+  }, [videoRef]);
+
   const startCamera = useCallback(async () => {
     const existingTrack = mediaStreamRef.current?.getVideoTracks()[0];
-    if (existingTrack && existingTrack.readyState === 'live') {
+    if (existingTrack && existingTrack.readyState === 'live' && mediaStreamRef.current) {
       setError(null);
+      await attachStreamToVideo(mediaStreamRef.current);
       setState('preview');
       return;
     }
@@ -79,10 +97,7 @@ export const useMediaRecorder = ({ targetFps, videoRef }: UseMediaRecorderOption
       if (settings.frameRate) {
         setFpsDetected(typeof settings.frameRate === 'number' ? settings.frameRate : Number(settings.frameRate));
       }
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
+      await attachStreamToVideo(stream);
       if (track.readyState === 'live') {
         setError(null);
       }
@@ -96,7 +111,7 @@ export const useMediaRecorder = ({ targetFps, videoRef }: UseMediaRecorderOption
       setError(describeGetUserMediaError(err));
       console.error(err);
     }
-  }, [targetFps, videoRef]);
+  }, [attachStreamToVideo, targetFps]);
 
   const startRecording = useCallback(async () => {
     if (!mediaStreamRef.current) {
@@ -155,16 +170,29 @@ export const useMediaRecorder = ({ targetFps, videoRef }: UseMediaRecorderOption
       recorder.stop();
     }
     recorderRef.current = null;
-    if (videoRef.current) {
-      await videoRef.current.pause();
-      videoRef.current.currentTime = 0;
-    }
-  }, [videoRef]);
+    // No tocamos videoRef.current: el componente se encargará de mostrar el clip grabado.
+  }, []);
 
   const stopCamera = useCallback(() => {
     stopTracks();
     setState('idle');
   }, [stopTracks]);
+
+  const resetRecording = useCallback(async () => {
+    setRecordedBlob(null);
+    setDurationSeconds(null);
+    startTimeRef.current = null;
+    setState('preview');
+    const stream = mediaStreamRef.current;
+    const liveTrack = stream?.getVideoTracks()[0];
+    if (!stream || !liveTrack || liveTrack.readyState !== 'live') {
+      await startCamera();
+      return;
+    }
+    // Si el <video> en directo aún no está montado, el efecto de CaptureScreen
+    // llamará a startCamera() y la asociación se completará entonces.
+    await attachStreamToVideo(stream);
+  }, [attachStreamToVideo, startCamera]);
 
   useEffect(() => () => {
     stopTracks();
@@ -184,6 +212,7 @@ export const useMediaRecorder = ({ targetFps, videoRef }: UseMediaRecorderOption
     startRecording,
     stopRecording,
     stopCamera,
+    resetRecording,
     recordedBlob,
     durationSeconds,
     fpsDetected,

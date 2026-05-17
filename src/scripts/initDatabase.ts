@@ -70,6 +70,10 @@ export async function initializeDatabase() {
           patient_age INTEGER,
           patient_height DECIMAL,
           patient_weight DECIMAL,
+          estimated_height DECIMAL,
+          height_source TEXT,
+          leg_length_derived DECIMAL,
+          bmi_derived DECIMAL,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
           UNIQUE(patient_id, exam_id)
@@ -194,6 +198,10 @@ export async function createTablesDirectly() {
       patient_age INTEGER,
       patient_height DECIMAL,
       patient_weight DECIMAL,
+      estimated_height DECIMAL,
+      height_source TEXT,
+      leg_length_derived DECIMAL,
+      bmi_derived DECIMAL,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
       UNIQUE(patient_id, exam_id)

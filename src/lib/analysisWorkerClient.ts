@@ -6,10 +6,21 @@ interface AnalysisWorkerPayload {
   medReport: ReturnType<MedicalReportGenerator['generateComprehensiveReport']>;
 }
 
+interface AnalysisPatientPayload {
+  identifier?: string;
+  age?: number;
+  sex?: 'male' | 'female' | 'other';
+  height?: number;
+  weight?: number;
+  gender?: 'M' | 'F';
+  diagnosis?: string;
+  referringPhysician?: string;
+}
+
 export async function runAnalysisWithWorkerFallback(
   input: EnhancedAnalysisInput & {
     ogs?: unknown;
-    patient?: { identifier?: string; age?: number };
+    patient?: AnalysisPatientPayload;
   },
 ): Promise<AnalysisWorkerPayload> {
   if (typeof Worker !== 'undefined') {
@@ -48,6 +59,14 @@ export async function runAnalysisWithWorkerFallback(
   const analyzer = new EnhancedGaitAnalyzer();
   const result = await analyzer.performCompleteAnalysis(input);
   const reportGen = new MedicalReportGenerator();
+  const patientForReport = input.patient
+    ? {
+        ...input.patient,
+        gender:
+          input.patient.gender ??
+          (input.patient.sex === 'female' ? 'F' : input.patient.sex === 'male' ? 'M' : undefined),
+      }
+    : undefined;
   const medReport = reportGen.generateComprehensiveReport(
     result.advancedMetrics,
     result.kinematicSummary,
@@ -57,7 +76,7 @@ export async function runAnalysisWithWorkerFallback(
     result.detectedGaitCycles,
     result.detailedKinematics,
     input.ogs as never,
-    input.patient,
+    patientForReport,
   );
   return { result, medReport };
 }

@@ -24,7 +24,11 @@ export const usePoseEstimation = (options: UsePoseEstimationOptions = {}) => {
   onPoseRef.current = options.onPoseDetected;
 
   const initialize = useCallback(async (videoElement: HTMLVideoElement) => {
-    if (isInitializedRef.current) return;
+    if (isInitializedRef.current && analyzerRef.current) {
+      analyzerRef.current.setLiveVideoElement(videoElement);
+      videoRef.current = videoElement;
+      return;
+    }
 
     function wireCallbacks(analyzer: PoseGaitAnalyzer): void {
       analyzer.setLiveTimestampProvider(() => {
@@ -62,8 +66,7 @@ export const usePoseEstimation = (options: UsePoseEstimationOptions = {}) => {
 
       analyzerRef.current = new PoseGaitAnalyzer();
       wireCallbacks(analyzerRef.current);
-
-      await analyzerRef.current.initializeCamera(videoElement);
+      analyzerRef.current.setLiveVideoElement(videoElement);
       videoRef.current = videoElement;
       isInitializedRef.current = true;
 
@@ -78,6 +81,7 @@ export const usePoseEstimation = (options: UsePoseEstimationOptions = {}) => {
 
   const startAnalysis = useCallback(() => {
     if (analyzerRef.current && isInitializedRef.current) {
+      analyzerRef.current.setLiveVideoElement(videoRef.current);
       analyzerRef.current.startAnalysis();
     }
   }, []);
@@ -103,8 +107,11 @@ export const usePoseEstimation = (options: UsePoseEstimationOptions = {}) => {
   }, []);
 
   const cleanup = useCallback(() => {
-    if (analyzerRef.current) {
-      analyzerRef.current.stopAnalysis();
+    const analyzer = analyzerRef.current;
+    if (analyzer) {
+      void analyzer.dispose().catch((error) => {
+        console.warn('Pose analyzer dispose failed:', error);
+      });
     }
     analyzerRef.current = null;
     videoRef.current = null;

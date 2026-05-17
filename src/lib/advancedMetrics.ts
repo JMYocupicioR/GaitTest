@@ -1,15 +1,19 @@
-import type { AdvancedMetrics, GaitEvent } from '../types/session.ts';
+import type { AdvancedMetrics, DerivedBiometrics, GaitEvent, ProcessedSkeleton } from '../types/session.ts';
 import type { PoseFrame } from './poseEstimation.ts';
+import { calculateCenterOfMassVariabilityFromSeries } from './centerOfMass.ts';
 
 interface AdvancedMetricInputs {
   events: GaitEvent[];
   distanceMeters: number | null;
   durationSeconds: number | null;
   poseFrames?: PoseFrame[];
+  processedSkeleton?: ProcessedSkeleton;
   /** Ancho del suelo visible en el encuadre (m); escala Δx normalizado → metros. */
   frameGroundWidthMeters?: number | null;
   /** Escala visual (px por metro) obtenida por calibración manual/objeto. */
   pxPerMeter?: number | null;
+  /** Derivados antropométricos (calibración biométrica). */
+  derivedBiometrics?: DerivedBiometrics;
   baseMetrics: {
     speedMps: number | null;
     cadenceSpm: number | null;
@@ -72,8 +76,7 @@ const calculateStepWidth = (
   if (groundW != null) {
     return avgWidth * groundW;
   }
-  // Legacy heuristic (640 px ≈ 1.8 m frame width)
-  return avgWidth * 1.8;
+  return null;
 };
 
 const calculateCenterOfMassVariability = (poseFrames: PoseFrame[]): number | null => {
@@ -98,6 +101,13 @@ const calculateCenterOfMassVariability = (poseFrames: PoseFrame[]): number | nul
   const yVariability = calculateVariability(yVariations) || 0;
 
   return Math.sqrt(xVariability * xVariability + yVariability * yVariability);
+};
+
+const calculateCenterOfMassVariabilityFromProcessedSkeleton = (
+  processedSkeleton?: ProcessedSkeleton,
+): number | null => {
+  if (!processedSkeleton || !processedSkeleton.totalCOM.length) return null;
+  return calculateCenterOfMassVariabilityFromSeries(processedSkeleton.totalCOM);
 };
 
 const calculateGaitPhases = (events: GaitEvent[], durationSeconds: number | null): {
@@ -149,7 +159,16 @@ const calculateGaitPhases = (events: GaitEvent[], durationSeconds: number | null
 };
 
 export const computeAdvancedMetrics = (inputs: AdvancedMetricInputs): AdvancedMetrics => {
-  const { events, durationSeconds, poseFrames = [], baseMetrics, frameGroundWidthMeters, pxPerMeter } = inputs;
+  const {
+    events,
+    durationSeconds,
+    poseFrames = [],
+    processedSkeleton,
+    baseMetrics,
+    frameGroundWidthMeters,
+    pxPerMeter,
+    derivedBiometrics,
+  } = inputs;
 
   // Basic metrics from input
   const basicMetrics = {
@@ -186,8 +205,14 @@ export const computeAdvancedMetrics = (inputs: AdvancedMetricInputs): AdvancedMe
   const strideLength = baseMetrics.stepLengthMeters ? baseMetrics.stepLengthMeters * 2 : null;
 
   // Spatial metrics from pose data
-  const stepWidth = calculateStepWidth(poseFrames, frameGroundWidthMeters ?? null, pxPerMeter ?? null);
-  const centerOfMassVariability = calculateCenterOfMassVariability(poseFrames);
+  const stepWidth = calculateStepWidth(
+    poseFrames,
+    frameGroundWidthMeters ?? derivedBiometrics?.frameGroundWidthMeters ?? null,
+    pxPerMeter ?? derivedBiometrics?.pxPerMeter ?? null,
+  );
+  const centerOfMassVariability =
+    calculateCenterOfMassVariabilityFromProcessedSkeleton(processedSkeleton) ??
+    calculateCenterOfMassVariability(poseFrames);
 
   // Joint angles from pose data
   let avgLeftKneeAngle: number | null = null;
