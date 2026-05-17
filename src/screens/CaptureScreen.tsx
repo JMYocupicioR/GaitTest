@@ -1,43 +1,98 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMediaRecorder } from '../hooks/useMediaRecorder.ts';
 import { usePoseEstimation } from '../hooks/usePoseEstimation.ts';
+import { useVideoPoseWorker } from '../hooks/useVideoPoseWorker.ts';
 import { useSessionStore } from '../state/sessionStore.ts';
 import { assessQuality } from '../lib/quality.ts';
+import { PoseOverlay, PoseLegend } from '../components/PoseOverlay.tsx';
 import type { QualityLevel } from '../types/session.ts';
 import type { HeelStrikeEvent, PoseFrame } from '../lib/poseEstimation.ts';
+
+const getVideoDuration = async (blob: Blob): Promise<number | null> => {
+  const video = document.createElement('video');
+  const url = URL.createObjectURL(blob);
+  try {
+    video.src = url;
+    await new Promise<void>((resolve, reject) => {
+      const onLoaded = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error('No se pudo leer la duración del video.'));
+      };
+      const cleanup = () => {
+        video.removeEventListener('loadedmetadata', onLoaded);
+        video.removeEventListener('error', onError);
+      };
+      video.addEventListener('loadedmetadata', onLoaded);
+      video.addEventListener('error', onError);
+    });
+    return Number.isFinite(video.duration) ? video.duration : null;
+  } catch {
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+};
 
 export const CaptureScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const calibrationConfirmed = Boolean((location.state as { calibrationConfirmed?: boolean })?.calibrationConfirmed ?? true);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playbackVideoRef = useRef<HTMLVideoElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const setVideoBlob = useSessionStore((state) => state.setVideoBlob);
+  const setPoseFramesInSession = useSessionStore((state) => state.setPoseFrames);
   const updateQuality = useSessionStore((state) => state.updateQuality);
   const setDuration = useSessionStore((state) => state.setDuration);
   const addHeelStrike = useSessionStore((state) => state.addHeelStrike);
+  const clearGaitEvents = useSessionStore((state) => state.clearGaitEvents);
+  const syncOfflineAutoHeelStrikes = useSessionStore((state) => state.syncOfflineAutoHeelStrikes);
   const captureSettings = useSessionStore((state) => state.session.captureSettings);
   const [lighting, setLighting] = useState<QualityLevel>('medium');
   const [subjectCentered, setSubjectCentered] = useState(true);
   const [poseFrames, setPoseFrames] = useState<PoseFrame[]>([]);
+  const [latestPoseFrame, setLatestPoseFrame] = useState<PoseFrame | null>(null);
   const [autoDetectionEnabled, setAutoDetectionEnabled] = useState(true);
+  const [showSkeleton, setShowSkeleton] = useState(true);
   const [detectedEvents, setDetectedEvents] = useState(0);
+  const [uploadedVideoBlob, setUploadedVideoBlob] = useState<Blob | null>(null);
+  const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string | null>(null);
+  const [isOfflineProcessing, setIsOfflineProcessing] = useState(false);
+  const [offlineProgress, setOfflineProgress] = useState(0);
 
   const recorder = useMediaRecorder({ targetFps: captureSettings.targetFps, videoRef });
+  const videoPoseWorker = useVideoPoseWorker({
+    sampleFps: Math.max(15, Math.min(30, captureSettings.targetFps || 30)),
+  });
 
-  // Pose estimation hooks
   const poseEstimation = usePoseEstimation({
+    getFrameTimestampSeconds: () => {
+      if (recorder.state === 'recording') {
+        return recorder.getRecordingElapsedSeconds();
+      }
+      const el = videoRef.current;
+      if (el && Number.isFinite(el.currentTime)) {
+        return Math.max(0, el.currentTime);
+      }
+      return null;
+    },
     onHeelStrike: (event: HeelStrikeEvent) => {
       if (autoDetectionEnabled && recorder.state === 'recording') {
-        addHeelStrike(event.foot, event.timestamp, 'auto');
-        setDetectedEvents(prev => prev + 1);
+        addHeelStrike(event.foot, event.timestamp, 'auto', event.confidence);
+        setDetectedEvents((prev) => prev + 1);
       }
     },
     onPoseDetected: (frame: PoseFrame) => {
+      setLatestPoseFrame(frame);
       if (recorder.state === 'recording') {
-        setPoseFrames(prev => [...prev.slice(-50), frame]); // Keep last 50 frames
+        setPoseFrames((prev) => [...prev.slice(-599), frame]);
       }
-    }
+    },
   });
 
   useEffect(() => {
@@ -45,9 +100,9 @@ export const CaptureScreen = () => {
       try {
         await recorder.startCamera();
 
-        // Initialize pose estimation when video is ready
         if (videoRef.current && autoDetectionEnabled) {
           await poseEstimation.initialize(videoRef.current);
+          poseEstimation.startAnalysis();
         }
       } catch (error) {
         console.error('Error initializing capture:', error);
@@ -62,21 +117,23 @@ export const CaptureScreen = () => {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Start/stop pose estimation with recording
   useEffect(() => {
     if (recorder.state === 'recording' && autoDetectionEnabled) {
       poseEstimation.startAnalysis();
       setDetectedEvents(0);
       setPoseFrames([]);
+      setPoseFramesInSession([]);
     } else if (recorder.state === 'complete') {
       poseEstimation.stopAnalysis();
+      setPoseFramesInSession(poseFrames);
     }
-  }, [recorder.state, autoDetectionEnabled, poseEstimation]);
+  }, [recorder.state, autoDetectionEnabled, poseEstimation, poseFrames, setPoseFramesInSession, clearGaitEvents]);
 
   useEffect(() => {
     if (!recorder.recordedBlob) {
       return;
     }
+    setUploadedVideoBlob(null);
     setVideoBlob(recorder.recordedBlob);
     setDuration(recorder.durationSeconds ?? null);
     const quality = assessQuality({
@@ -89,9 +146,83 @@ export const CaptureScreen = () => {
     updateQuality(quality);
   }, [calibrationConfirmed, lighting, recorder.durationSeconds, recorder.fpsDetected, recorder.recordedBlob, subjectCentered, setDuration, setVideoBlob, updateQuality]);
 
+  useEffect(() => {
+    return () => {
+      if (uploadedVideoUrl) {
+        URL.revokeObjectURL(uploadedVideoUrl);
+      }
+    };
+  }, [uploadedVideoUrl]);
+
+  const processBlobOffline = async (blob: Blob): Promise<PoseFrame[]> => {
+    setIsOfflineProcessing(true);
+    setOfflineProgress(0);
+    try {
+      const result = await videoPoseWorker.runExtraction(blob, {
+        onProgress: (progress) => setOfflineProgress(progress),
+      });
+      setPoseFrames(result.frames);
+      setPoseFramesInSession(result.frames);
+      syncOfflineAutoHeelStrikes(result.heelStrikes);
+      setDetectedEvents(result.heelStrikes.length);
+      return result.frames;
+    } finally {
+      setIsOfflineProcessing(false);
+      setOfflineProgress(0);
+    }
+  };
+
+  const handleVideoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    recorder.stopCamera();
+    poseEstimation.stopAnalysis();
+    clearGaitEvents();
+
+    if (uploadedVideoUrl) {
+      URL.revokeObjectURL(uploadedVideoUrl);
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    setUploadedVideoUrl(objectUrl);
+    setUploadedVideoBlob(file);
+    setVideoBlob(file);
+    setPoseFrames([]);
+    setPoseFramesInSession([]);
+    setDetectedEvents(0);
+
+    const duration = await getVideoDuration(file);
+    setDuration(duration);
+    updateQuality(
+      assessQuality({
+        durationSeconds: duration,
+        fpsDetected: captureSettings.targetFps,
+        lightingScore: lighting,
+        calibrationConfirmed,
+        subjectCentered,
+      }),
+    );
+
+    if (autoDetectionEnabled) {
+      await processBlobOffline(file);
+    }
+  };
+
+  const handleContinue = async () => {
+    const analysisBlob = uploadedVideoBlob ?? recorder.recordedBlob ?? null;
+    if (!analysisBlob) return;
+
+    if (autoDetectionEnabled && poseFrames.length === 0) {
+      await processBlobOffline(analysisBlob);
+    }
+
+    navigate('/events');
+  };
+
   const readyForNext = useMemo(
-    () => recorder.state === 'complete' && !!recorder.recordedBlob,
-    [recorder.recordedBlob, recorder.state],
+    () => Boolean(uploadedVideoBlob || (recorder.state === 'complete' && recorder.recordedBlob)),
+    [uploadedVideoBlob, recorder.recordedBlob, recorder.state],
   );
 
   return (
@@ -103,10 +234,46 @@ export const CaptureScreen = () => {
       </header>
 
       <section className="card video-shell">
-        <video ref={videoRef} playsInline muted controls={recorder.state === 'complete'} autoPlay />
+        {uploadedVideoUrl ? (
+          <div className="video-stage">
+            <video ref={playbackVideoRef} playsInline controls src={uploadedVideoUrl} />
+            <PoseOverlay
+              mode="playback"
+              videoRef={playbackVideoRef}
+              frames={poseFrames}
+              visible={showSkeleton && poseFrames.length > 0}
+            />
+          </div>
+        ) : (
+          <div className="video-stage">
+            <video ref={videoRef} playsInline muted controls={recorder.state === 'complete'} autoPlay />
+            <PoseOverlay
+              mode="live"
+              videoRef={videoRef}
+              liveFrame={latestPoseFrame}
+              visible={showSkeleton && autoDetectionEnabled}
+            />
+          </div>
+        )}
+        {showSkeleton && (autoDetectionEnabled || poseFrames.length > 0) && <PoseLegend />}
         <div className="button-row">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="video/mp4,video/webm,video/quicktime"
+            style={{ display: 'none' }}
+            onChange={handleVideoUpload}
+          />
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isOfflineProcessing || recorder.state === 'recording'}
+          >
+            Cargar video
+          </button>
           {recorder.state !== 'recording' && (
-            <button type="button" className="primary-button" onClick={recorder.startRecording}>
+            <button type="button" className="primary-button" onClick={recorder.startRecording} disabled={isOfflineProcessing}>
               Grabar
             </button>
           )}
@@ -115,7 +282,7 @@ export const CaptureScreen = () => {
               Detener
             </button>
           )}
-          {recorder.state === 'complete' && (
+          {recorder.state === 'complete' && !uploadedVideoBlob && (
             <button type="button" className="secondary-button" onClick={() => recorder.startRecording()}>
               Repetir captura
             </button>
@@ -135,7 +302,7 @@ export const CaptureScreen = () => {
           </select>
         </div>
 
-        <label style={{ display: 'flex', gap: '0.5rem' }}>
+        <label className="touch-checkbox-label">
           <input
             type="checkbox"
             checked={subjectCentered}
@@ -144,13 +311,22 @@ export const CaptureScreen = () => {
           <span>La persona se mantuvo dentro del encuadre durante todo el clip.</span>
         </label>
 
-        <label style={{ display: 'flex', gap: '0.5rem' }}>
+        <label className="touch-checkbox-label">
           <input
             type="checkbox"
             checked={autoDetectionEnabled}
             onChange={(event) => setAutoDetectionEnabled(event.target.checked)}
           />
           <span>Detección automática de eventos con IA (recomendado)</span>
+        </label>
+
+        <label className="touch-checkbox-label">
+          <input
+            type="checkbox"
+            checked={showSkeleton}
+            onChange={(event) => setShowSkeleton(event.target.checked)}
+          />
+          <span>Mostrar puntos corporales sobre el video</span>
         </label>
 
         {recorder.durationSeconds && (
@@ -165,13 +341,23 @@ export const CaptureScreen = () => {
             ✓ Pose estimation activa - {poseFrames.length} frames analizados
           </p>
         )}
+        {isOfflineProcessing && (
+          <div className="offline-progress" aria-live="polite">
+            <p className="helper-text" style={{ color: '#2563eb' }}>
+              Procesando video offline con IA... {Math.round(offlineProgress * 100)}%
+            </p>
+            <div className="offline-progress-track" aria-hidden="true">
+              <div className="offline-progress-fill" style={{ width: `${Math.round(offlineProgress * 100)}%` }} />
+            </div>
+          </div>
+        )}
       </section>
 
-      <div className="button-row">
+      <div className="button-row page-actions">
         <button type="button" className="secondary-button" onClick={() => navigate(-1)}>
           Volver
         </button>
-        <button type="button" className="primary-button" disabled={!readyForNext} onClick={() => navigate('/events')}>
+        <button type="button" className="primary-button" disabled={!readyForNext || isOfflineProcessing} onClick={handleContinue}>
           Continuar a anotación
         </button>
       </div>

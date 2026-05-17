@@ -37,6 +37,9 @@ export class PoseGaitAnalyzer {
   private camera: Camera | null = null;
   private isProcessing = false;
   private frameBuffer: PoseFrame[] = [];
+  private pendingFrameTimestamp: number | null = null;
+  /** Segundos desde el inicio del clip / grabación (p. ej. video.currentTime o tiempo de grabación). */
+  private liveTimestampProvider: (() => number | null) | null = null;
   private onHeelStrike?: (event: HeelStrikeEvent) => void;
   private onPoseDetected?: (frame: PoseFrame) => void;
 
@@ -83,6 +86,18 @@ export class PoseGaitAnalyzer {
     this.frameBuffer = [];
   }
 
+  public async processImage(image: HTMLVideoElement | HTMLCanvasElement, timestampSeconds?: number): Promise<void> {
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+    this.pendingFrameTimestamp = Number.isFinite(timestampSeconds) ? timestampSeconds ?? null : null;
+    try {
+      await this.pose.send({ image });
+    } finally {
+      this.pendingFrameTimestamp = null;
+      this.isProcessing = false;
+    }
+  }
+
   public setHeelStrikeCallback(callback: (event: HeelStrikeEvent) => void): void {
     this.onHeelStrike = callback;
   }
@@ -91,10 +106,20 @@ export class PoseGaitAnalyzer {
     this.onPoseDetected = callback;
   }
 
+  /**
+   * En cámara en vivo, alinear timestamps con el reproductor o con el tiempo transcurrido de grabación.
+   */
+  public setLiveTimestampProvider(provider: (() => number | null) | null): void {
+    this.liveTimestampProvider = provider;
+  }
+
   private onPoseResults(results: Results): void {
     if (!results.poseLandmarks) return;
 
-    const timestamp = performance.now() / 1000; // Convert to seconds
+    const fromProvider = this.liveTimestampProvider?.();
+    const timestamp =
+      this.pendingFrameTimestamp ??
+      (fromProvider != null && Number.isFinite(fromProvider) ? Math.max(0, fromProvider) : performance.now() / 1000);
 
     const normalizedLandmarks = results.poseLandmarks.map(lm => ({
       ...lm,
@@ -249,5 +274,10 @@ export class PoseGaitAnalyzer {
     }
 
     return angle;
+  }
+
+  public async dispose(): Promise<void> {
+    this.stopAnalysis();
+    await this.pose.close();
   }
 }

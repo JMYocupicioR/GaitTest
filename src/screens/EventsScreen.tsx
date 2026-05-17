@@ -1,10 +1,11 @@
-﻿import type { ObservationChecklist, OGSScore, OGSItemScore, FootSide } from '../types/session.ts';
+import type { ObservationChecklist, OGSScore, OGSItemScore, FootSide } from '../types/session.ts';
 import type { ChangeEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../state/sessionStore.ts';
 import { formatSeconds } from '../lib/format.ts';
 import { OGSInput } from '../components/OGSInput.tsx';
+import { PoseOverlay, PoseLegend } from '../components/PoseOverlay.tsx';
 import { DEFAULT_OGS_SCORE } from '../types/session.ts';
 
 const observationFields = [
@@ -40,6 +41,12 @@ export const EventsScreen = () => {
   });
 
   const [showOGS, setShowOGS] = useState(false);
+  const [showSkeleton, setShowSkeleton] = useState(true);
+  const [analysisBusy, setAnalysisBusy] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  const poseFrames = session.poseFrames ?? [];
+  const hasPoseFrames = poseFrames.length > 0;
 
   const videoUrl = useMemo(() => {
     if (!session.videoBlob) {
@@ -88,13 +95,21 @@ export const EventsScreen = () => {
 
   const canContinue = session.events.length >= 4;
 
-  const handleContinue = () => {
-    // Guardar puntuaciones OGS antes de continuar
+  const handleContinue = async () => {
+    setAnalysisError(null);
     if (ogsScores.left && ogsScores.right) {
       setOGSScore(ogsScores.left, ogsScores.right);
     }
-    finalizeAnalysis();
-    navigate('/results');
+    setAnalysisBusy(true);
+    try {
+      await finalizeAnalysis();
+      navigate('/results');
+    } catch (err) {
+      console.error(err);
+      setAnalysisError('No se pudo completar el análisis. Inténtalo de nuevo.');
+    } finally {
+      setAnalysisBusy(false);
+    }
   };
 
   return (
@@ -107,9 +122,30 @@ export const EventsScreen = () => {
 
       <section className="card video-shell">
         {videoUrl ? (
-          <video ref={videoRef} controls src={videoUrl} playsInline />
+          <div className="video-stage">
+            <video ref={videoRef} controls src={videoUrl} playsInline />
+            <PoseOverlay
+              mode="playback"
+              videoRef={videoRef}
+              frames={poseFrames}
+              visible={showSkeleton && hasPoseFrames}
+            />
+          </div>
         ) : (
           <p className="helper-text">Todavía no hay video cargado. Vuelve a la cámara para grabar.</p>
+        )}
+        {hasPoseFrames && (
+          <>
+            <label className="touch-checkbox-label" style={{ color: '#cbd5e1' }}>
+              <input
+                type="checkbox"
+                checked={showSkeleton}
+                onChange={(event) => setShowSkeleton(event.target.checked)}
+              />
+              <span>Mostrar puntos corporales sobre el video</span>
+            </label>
+            {showSkeleton && <PoseLegend />}
+          </>
         )}
         <div className="button-row">
           <button type="button" className="primary-button" disabled={!videoUrl} onClick={() => handleAddEvent('L')}>
@@ -128,17 +164,18 @@ export const EventsScreen = () => {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {session.events.map((event) => (
-              <div key={event.id} className="form-section" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.75rem' }}>
-                <span style={{ width: '4rem', fontWeight: 600 }}>{event.foot === 'L' ? 'Izq.' : 'Der.'}</span>
+              <div key={event.id} className="event-item">
+                <span className="event-item-side">{event.foot === 'L' ? 'Izq.' : 'Der.'}</span>
                 <input
                   type="number"
+                  inputMode="decimal"
                   step={0.05}
                   min={0}
                   value={event.timestamp}
                   onChange={(changeEvent) => handleTimeChange(event.id, changeEvent.target.value)}
-                  style={{ maxWidth: '8rem' }}
+                  className="event-item-input"
                 />
-                <span className="helper-text">{formatSeconds(event.timestamp)}</span>
+                <span className="event-item-time">{formatSeconds(event.timestamp)}</span>
                 <button type="button" className="secondary-button" onClick={() => removeEvent(event.id)}>
                   Eliminar
                 </button>
@@ -152,7 +189,7 @@ export const EventsScreen = () => {
         <h2>Checklist observacional</h2>
         <div className="checkbox-grid">
           {observationFields.map((item) => (
-            <label key={item.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+            <label key={item.id} className="touch-checkbox-label">
               <input
                 type="checkbox"
                 checked={Boolean(session.observations[item.id])}
@@ -210,7 +247,7 @@ export const EventsScreen = () => {
               </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
               <OGSInput
                 foot="L"
                 score={ogsScores.left}
@@ -256,12 +293,18 @@ export const EventsScreen = () => {
         )}
       </section>
 
-      <div className="button-row">
-        <button type="button" className="secondary-button" onClick={() => navigate(-1)}>
+      {analysisError ? (
+        <p className="helper-text" style={{ color: '#dc2626' }}>
+          {analysisError}
+        </p>
+      ) : null}
+
+      <div className="button-row page-actions">
+        <button type="button" className="secondary-button" onClick={() => navigate(-1)} disabled={analysisBusy}>
           Volver
         </button>
-        <button type="button" className="primary-button" disabled={!canContinue} onClick={handleContinue}>
-          Ver resultados
+        <button type="button" className="primary-button" disabled={!canContinue || analysisBusy} onClick={() => void handleContinue()}>
+          {analysisBusy ? 'Analizando…' : 'Ver resultados'}
         </button>
       </div>
     </div>

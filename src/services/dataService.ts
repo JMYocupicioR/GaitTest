@@ -1,85 +1,27 @@
-import { supabase, type GaitAnalysisRecord, type SessionRecord } from '../lib/supabase.ts';
+import {
+  supabase,
+  type GaitAnalysisRecord,
+  type GaitKeyFrameRecord,
+  type GaitKinematicSeriesRecord,
+  type SessionRecord,
+} from '../lib/supabase.ts';
 import type { SessionData } from '../types/session.ts';
 import { kinematicExtractor } from '../lib/kinematicExtractor.ts';
+import {
+  buildPersistedSessionData,
+  extractCompactKeyFrames,
+  extractKinematicSeriesData,
+} from '../lib/posePersistence.ts';
+import { extractEventThumbnails } from '../lib/thumbnailExtractor.ts';
 
 export class DataService {
-
-  /**
-   * Initialize the database tables
-   */
-  static async initializeDatabase(): Promise<void> {
-    try {
-      // Create tables if they don't exist
-      const { error: gaitTableError } = await supabase.rpc('exec_sql', {
-        sql: `
-          CREATE TABLE IF NOT EXISTS gait_analysis_records (
-            id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-            patient_id TEXT NOT NULL,
-            exam_id TEXT NOT NULL,
-            side TEXT CHECK (side IN ('L', 'R')) NOT NULL,
-            hip_flex_ic DECIMAL,
-            hip_rot_mean DECIMAL,
-            knee_flex_mean_stance DECIMAL,
-            knee_flex_max_extension DECIMAL,
-            dx_mod TEXT,
-            dx_side TEXT,
-            faq INTEGER,
-            gmfcs INTEGER,
-            age INTEGER,
-            height DECIMAL,
-            mass DECIMAL,
-            cadence DECIMAL,
-            speed DECIMAL,
-            step_len DECIMAL,
-            leg_len DECIMAL,
-            bmi DECIMAL,
-            speed_norm DECIMAL,
-            step_len_norm DECIMAL,
-            cadence_norm DECIMAL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            UNIQUE(patient_id, exam_id, side)
-          );
-        `
-      });
-
-      const { error: sessionTableError } = await supabase.rpc('exec_sql', {
-        sql: `
-          CREATE TABLE IF NOT EXISTS session_records (
-            id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-            patient_id TEXT NOT NULL,
-            exam_id TEXT NOT NULL,
-            session_date DATE NOT NULL,
-            session_data JSONB NOT NULL,
-            duration_seconds INTEGER,
-            steps INTEGER,
-            distance_meters DECIMAL,
-            avg_speed DECIMAL,
-            cadence DECIMAL,
-            ogs_left_total INTEGER,
-            ogs_right_total INTEGER,
-            ogs_quality_index DECIMAL,
-            ogs_asymmetry_index DECIMAL,
-            pathology_detected BOOLEAN DEFAULT FALSE,
-            primary_pathology TEXT,
-            pathology_confidence DECIMAL,
-            patient_name TEXT,
-            patient_age INTEGER,
-            patient_height DECIMAL,
-            patient_weight DECIMAL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            UNIQUE(patient_id, exam_id)
-          );
-        `
-      });
-
-      if (gaitTableError) console.warn('Gait table creation warning:', gaitTableError);
-      if (sessionTableError) console.warn('Session table creation warning:', sessionTableError);
-
-    } catch (error) {
-      console.error('Database initialization error:', error);
+  private static async getCurrentUserId(): Promise<string | null> {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      console.error('Error loading authenticated user:', error);
+      return null;
     }
+    return data.user?.id ?? null;
   }
 
   /**
@@ -87,30 +29,47 @@ export class DataService {
    */
   static async saveSession(sessionData: SessionData): Promise<string | null> {
     try {
+      const userId = await this.getCurrentUserId();
+      if (!userId) {
+        console.error('No authenticated user found. Session cannot be saved.');
+        return null;
+      }
+
       const patientId = sessionData.patient?.identifier ||
                        sessionData.patient?.name ||
                        `patient_${Date.now()}`;
 
       const examId = `exam_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const persistedSession = buildPersistedSessionData(sessionData);
 
       // Extract key metrics for indexing
+      const pathologyFromSnapshot = sessionData.clinicalAnalysisSnapshot?.pathologyAnalysis;
+      const pathologyFromEnhanced = sessionData.enhancedAnalysisResult?.pathologyAnalysis;
+      const primaryFindings =
+        pathologyFromSnapshot?.primaryFindings ?? pathologyFromEnhanced?.primaryFindings;
+      const primaryFinding = primaryFindings?.[0];
+
       const sessionRecord: Omit<SessionRecord, 'id' | 'created_at' | 'updated_at'> = {
+        user_id: userId,
         patient_id: patientId,
         exam_id: examId,
         session_date: new Date().toISOString().split('T')[0],
-        session_data: sessionData,
+        session_data: persistedSession,
         duration_seconds: sessionData.quality.durationSeconds || undefined,
         steps: sessionData.metrics.steps || undefined,
-        distance_meters: undefined, // Not available in current SessionMetrics
+        distance_meters: sessionData.captureSettings.distanceMeters ?? undefined,
         avg_speed: sessionData.metrics.speedMps || undefined,
         cadence: sessionData.metrics.cadenceSpm || undefined,
         ogs_left_total: sessionData.ogs?.leftTotal || undefined,
         ogs_right_total: sessionData.ogs?.rightTotal || undefined,
         ogs_quality_index: sessionData.ogs?.qualityIndex || undefined,
         ogs_asymmetry_index: sessionData.ogs?.asymmetryIndex || undefined,
-        pathology_detected: sessionData.enhancedAnalysisResult?.pathologyAnalysis?.primaryFindings.length ? true : false,
-        primary_pathology: sessionData.enhancedAnalysisResult?.pathologyAnalysis?.primaryFindings[0]?.condition || undefined,
-        pathology_confidence: sessionData.enhancedAnalysisResult?.pathologyAnalysis?.primaryFindings[0]?.confidence || undefined,
+        pathology_detected: Boolean(primaryFindings && primaryFindings.length > 0),
+        primary_pathology:
+          sessionData.clinicalAnalysisSnapshot?.primaryDiagnosis ||
+          primaryFinding?.condition ||
+          undefined,
+        pathology_confidence: primaryFinding?.confidence || undefined,
         patient_name: sessionData.patient?.name || undefined,
         patient_age: sessionData.patient?.age || undefined,
         patient_height: sessionData.patient?.height || undefined,
@@ -128,8 +87,11 @@ export class DataService {
         return null;
       }
 
-      // Also save individual gait records in CSV format
-      await this.saveGaitAnalysisRecords(sessionData, patientId, examId);
+      await Promise.all([
+        this.saveGaitAnalysisRecords(sessionData, userId, patientId, examId),
+        this.saveKinematicSeries(sessionData, userId, patientId, examId),
+        this.saveKeyFrames(sessionData, userId, examId),
+      ]);
 
       return data.id;
     } catch (error) {
@@ -143,6 +105,7 @@ export class DataService {
    */
   private static async saveGaitAnalysisRecords(
     sessionData: SessionData,
+    userId: string,
     patientId: string,
     examId: string
   ): Promise<void> {
@@ -153,8 +116,12 @@ export class DataService {
       const kinematicValues = kinematicExtractor.extractKinematicValues(sessionData);
 
       // Derive clinical data from pathology analysis if available
-      const primaryPathology = sessionData.enhancedAnalysisResult?.pathologyAnalysis?.primaryFindings[0];
-      const dx_mod = primaryPathology?.condition || undefined;
+      const snap = sessionData.clinicalAnalysisSnapshot;
+      const enhanced = sessionData.enhancedAnalysisResult?.pathologyAnalysis;
+      const primaryPathology =
+        snap?.pathologyAnalysis?.primaryFindings?.[0] ?? enhanced?.primaryFindings?.[0];
+      const dx_mod =
+        snap?.primaryDiagnosis || primaryPathology?.condition || undefined;
 
       // Create records for both sides
       (['L', 'R'] as const).forEach(side => {
@@ -162,6 +129,7 @@ export class DataService {
         const sideKinematics = isLeft ? kinematicValues.left : kinematicValues.right;
 
         const record: Omit<GaitAnalysisRecord, 'id' | 'created_at' | 'updated_at'> = {
+          user_id: userId,
           patient_id: patientId,
           exam_id: examId,
           side: side,
@@ -193,6 +161,7 @@ export class DataService {
           speed_norm: kinematicValues.speed_norm ?? undefined,
           step_len_norm: kinematicValues.step_len_norm ?? undefined,
           cadence_norm: kinematicValues.cadence_norm ?? undefined,
+          data_source: kinematicValues.data_source,
         };
 
         records.push(record);
@@ -210,14 +179,107 @@ export class DataService {
     }
   }
 
+  private static async saveKinematicSeries(
+    sessionData: SessionData,
+    userId: string,
+    patientId: string,
+    examId: string,
+  ): Promise<void> {
+    try {
+      const series = extractKinematicSeriesData(sessionData);
+      if (!series.length) {
+        return;
+      }
+
+      const records: Omit<GaitKinematicSeriesRecord, 'id' | 'created_at'>[] = series.map((item) => ({
+        user_id: userId,
+        patient_id: patientId,
+        exam_id: examId,
+        joint: item.joint,
+        side: item.side,
+        percent_cycle: item.percentCycle,
+      }));
+
+      const { error } = await supabase.from('gait_kinematic_series').insert(records);
+      if (error) {
+        console.error('Error saving kinematic series:', error);
+      }
+    } catch (error) {
+      console.error('Error saving kinematic series:', error);
+    }
+  }
+
+  private static async saveKeyFrames(
+    sessionData: SessionData,
+    userId: string,
+    examId: string,
+  ): Promise<void> {
+    try {
+      const compactKeyFrames = extractCompactKeyFrames(sessionData.poseFrames ?? [], sessionData.events, 12);
+      if (!compactKeyFrames.length) {
+        return;
+      }
+
+      const bucket = 'gait-thumbnails';
+      await supabase.storage.createBucket(bucket, { public: false }).catch(() => undefined);
+
+      const thumbnailMap = new Map<string, string>();
+      if (sessionData.videoBlob && typeof window !== 'undefined') {
+        try {
+          const thumbnails = await extractEventThumbnails(sessionData.videoBlob, sessionData.events, 12);
+          for (let index = 0; index < thumbnails.length; index += 1) {
+            const thumbnail = thumbnails[index];
+            const filePath = `${userId}/${examId}/event-${index + 1}-${Math.round(thumbnail.timestampSec * 1000)}.jpg`;
+            const { error } = await supabase.storage.from(bucket).upload(filePath, thumbnail.blob, {
+              contentType: 'image/jpeg',
+              upsert: false,
+            });
+            if (!error) {
+              const key = `${thumbnail.eventType}:${thumbnail.foot}:${thumbnail.timestampSec.toFixed(3)}`;
+              thumbnailMap.set(key, filePath);
+            }
+          }
+        } catch (error) {
+          console.warn('Thumbnail extraction skipped:', error);
+        }
+      }
+
+      const records: Omit<GaitKeyFrameRecord, 'id' | 'created_at'>[] = compactKeyFrames.map((keyFrame) => {
+        const key = `${keyFrame.eventType}:${keyFrame.foot}:${keyFrame.timestampSec.toFixed(3)}`;
+        return {
+          user_id: userId,
+          exam_id: examId,
+          event_type: keyFrame.eventType,
+          foot: keyFrame.foot,
+          timestamp_sec: keyFrame.timestampSec,
+          landmark_snapshot: keyFrame.landmarkSnapshot,
+          thumbnail_path: thumbnailMap.get(key),
+        };
+      });
+
+      const { error } = await supabase.from('gait_key_frames').insert(records);
+      if (error) {
+        console.error('Error saving key frames:', error);
+      }
+    } catch (error) {
+      console.error('Error saving key frames:', error);
+    }
+  }
+
   /**
    * Get all sessions for a patient
    */
   static async getPatientSessions(patientId: string): Promise<SessionRecord[]> {
     try {
+      const userId = await this.getCurrentUserId();
+      if (!userId) {
+        return [];
+      }
+
       const { data, error } = await supabase
         .from('session_records')
         .select('*')
+        .eq('user_id', userId)
         .eq('patient_id', patientId)
         .order('session_date', { ascending: false });
 
@@ -238,9 +300,15 @@ export class DataService {
    */
   static async getPatientGaitRecords(patientId: string): Promise<GaitAnalysisRecord[]> {
     try {
+      const userId = await this.getCurrentUserId();
+      if (!userId) {
+        return [];
+      }
+
       const { data, error } = await supabase
         .from('gait_analysis_records')
         .select('*')
+        .eq('user_id', userId)
         .eq('patient_id', patientId)
         .order('created_at', { ascending: false });
 
@@ -375,14 +443,14 @@ export class DataService {
       const gaitRecords = await this.getPatientGaitRecords(patientId);
 
       if (gaitRecords.length === 0) {
-        return 'Patient_ID,examid,side,HipFlex_IC,HipRot_mean,KneeFlex_meanStance,KneeFlex_maxExtension,dxmod,dxside,faq,gmfcs,age,height,mass,cadence,speed,steplen,leglen,bmi,speedNorm,steplenNorm,cadenceNorm\n';
+        return 'Patient_ID,examid,side,HipFlex_IC,HipRot_mean,KneeFlex_meanStance,KneeFlex_maxExtension,dxmod,dxside,faq,gmfcs,age,height,mass,cadence,speed,steplen,leglen,bmi,speedNorm,steplenNorm,cadenceNorm,data_source\n';
       }
 
       const headers = [
         'Patient_ID', 'examid', 'side', 'HipFlex_IC', 'HipRot_mean',
         'KneeFlex_meanStance', 'KneeFlex_maxExtension', 'dxmod', 'dxside',
         'faq', 'gmfcs', 'age', 'height', 'mass', 'cadence', 'speed',
-        'steplen', 'leglen', 'bmi', 'speedNorm', 'steplenNorm', 'cadenceNorm'
+        'steplen', 'leglen', 'bmi', 'speedNorm', 'steplenNorm', 'cadenceNorm', 'data_source'
       ];
 
       let csvContent = headers.join(',') + '\n';
@@ -410,7 +478,8 @@ export class DataService {
           record.bmi || '',
           record.speed_norm || '',
           record.step_len_norm || '',
-          record.cadence_norm || ''
+          record.cadence_norm || '',
+          record.data_source || ''
         ];
         csvContent += row.join(',') + '\n';
       });
@@ -427,9 +496,15 @@ export class DataService {
    */
   static async searchPatients(query: string): Promise<Array<{patient_id: string, patient_name: string, last_session: string}>> {
     try {
+      const userId = await this.getCurrentUserId();
+      if (!userId) {
+        return [];
+      }
+
       const { data, error } = await supabase
         .from('session_records')
         .select('patient_id, patient_name, session_date')
+        .eq('user_id', userId)
         .or(`patient_id.ilike.%${query}%, patient_name.ilike.%${query}%`)
         .order('session_date', { ascending: false });
 

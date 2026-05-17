@@ -1,39 +1,132 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../state/sessionStore.ts';
 import { formatCadence, formatMetersPerSecond, formatSeconds, formatMeters, formatPercentage } from '../lib/format.ts';
 import { OGSValidationPanel } from '../components/OGSValidationPanel.tsx';
 import { LongitudinalAnalysis } from '../components/LongitudinalAnalysis.tsx';
 import { PatientSearch } from '../components/PatientSearch.tsx';
-import { initializeDatabase, checkTables } from '../scripts/initDatabase.ts';
-import { checkSupabaseTables, getTableInfo } from '../scripts/checkTables.ts';
+import { GaitPhaseDiagram } from '../components/GaitPhaseDiagram.tsx';
+import { KinematicChartCanvas } from '../components/KinematicChartCanvas.tsx';
+import { PoseOverlay, PoseLegend } from '../components/PoseOverlay.tsx';
+import { SymmetryRadarChart } from '../components/SymmetryRadarChart.tsx';
+import { PhaseHeatmap } from '../components/PhaseHeatmap.tsx';
+import { buildSymmetryRadar } from '../lib/symmetryRadar.ts';
+import { useAuth } from '../hooks/useAuth.ts';
 
 export const ResultsScreen = () => {
   const navigate = useNavigate();
   const session = useSessionStore((state) => state.session);
   const saveSessionToDatabase = useSessionStore((state) => state.saveSessionToDatabase);
+  const setCaptureSettings = useSessionStore((state) => state.setCaptureSettings);
+  const { user } = useAuth();
 
   const [showLongitudinalAnalysis, setShowLongitudinalAnalysis] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
   const [selectedPatientName, setSelectedPatientName] = useState<string>('');
   const [saving, setSaving] = useState(false);
-  const [dbStatus, setDbStatus] = useState<{ gaitTable: boolean; sessionTable: boolean } | null>(null);
-  const [initializingDb, setInitializingDb] = useState(false);
+  const [showSkeleton, setShowSkeleton] = useState(true);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [videoTime, setVideoTime] = useState(0);
 
   const quality = session.quality;
+  const enhancedAnalysisResult = session.enhancedAnalysisResult as (typeof session.enhancedAnalysisResult & {
+    compensationAnalysis?: import('../lib/compensationDetection.ts').CompensationAnalysis;
+  }) | undefined;
+  const symmetryRadarData = useMemo(() => buildSymmetryRadar(session), [session]);
+  const lowConfidencePct = useMemo(() => {
+    const frames = session.poseFrames ?? [];
+    if (!frames.length) return 0;
+    const low = frames.filter((frame) => {
+      const key = [11, 12, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32];
+      const mean =
+        key.reduce((sum, idx) => sum + (frame.landmarks?.[idx]?.visibility ?? 0), 0) / key.length;
+      return mean < 0.5;
+    }).length;
+    return (low / frames.length) * 100;
+  }, [session.poseFrames]);
+  const visibilitySeries = useMemo(() => {
+    const frames = session.poseFrames ?? [];
+    if (!frames.length) return [] as Array<{ t: number; v: number }>;
+    const key = [11, 12, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32];
+    return frames.map((frame) => ({
+      t: frame.timestamp,
+      v: key.reduce((sum, idx) => sum + (frame.landmarks?.[idx]?.visibility ?? 0), 0) / key.length,
+    }));
+  }, [session.poseFrames]);
+  const sortedEvents = useMemo(
+    () => [...session.events].sort((a, b) => a.timestamp - b.timestamp),
+    [session.events],
+  );
+  const timelineDuration = useMemo(() => {
+    const fromVideo = videoDuration > 0 ? videoDuration : 0;
+    const fromQuality = session.quality.durationSeconds ?? 0;
+    const fromEvents = sortedEvents.at(-1)?.timestamp ?? 0;
+    return Math.max(fromVideo, fromQuality, fromEvents, 1);
+  }, [session.quality.durationSeconds, sortedEvents, videoDuration]);
+  const videoUrl = useMemo(() => {
+    if (!session.videoBlob) return null;
+    return URL.createObjectURL(session.videoBlob);
+  }, [session.videoBlob]);
+
+  useEffect(() => () => {
+    if (videoUrl) {
+      URL.revokeObjectURL(videoUrl);
+    }
+  }, [videoUrl]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onLoaded = () => {
+      if (Number.isFinite(video.duration)) {
+        setVideoDuration(video.duration);
+      }
+    };
+    const onTimeUpdate = () => setVideoTime(video.currentTime);
+    video.addEventListener('loadedmetadata', onLoaded);
+    video.addEventListener('timeupdate', onTimeUpdate);
+    return () => {
+      video.removeEventListener('loadedmetadata', onLoaded);
+      video.removeEventListener('timeupdate', onTimeUpdate);
+    };
+  }, [videoUrl]);
+
+  const jumpToEvent = (timestamp: number) => {
+    if (!videoRef.current) return;
+    videoRef.current.currentTime = timestamp;
+    void videoRef.current.play().catch(() => undefined);
+  };
+
+  const handleCaptureFrontalComplement = () => {
+    setCaptureSettings({ viewMode: 'frontal' });
+    navigate('/capture');
+  };
 
   const handleSaveSession = async () => {
     setSaving(true);
     try {
       const sessionId = await saveSessionToDatabase();
       if (sessionId) {
-        alert('Sesión guardada exitosamente en la base de datos');
+        window.dispatchEvent(
+          new CustomEvent('app-toast', {
+            detail: { type: 'success', message: 'Sesión guardada exitosamente en la base de datos.' },
+          }),
+        );
       } else {
-        alert('Error al guardar la sesión');
+        window.dispatchEvent(
+          new CustomEvent('app-toast', {
+            detail: { type: 'error', message: 'No se pudo guardar la sesión.' },
+          }),
+        );
       }
     } catch (error) {
       console.error('Error saving session:', error);
-      alert('Error al guardar la sesión');
+      window.dispatchEvent(
+        new CustomEvent('app-toast', {
+          detail: { type: 'error', message: 'Error al guardar la sesión.' },
+        }),
+      );
     } finally {
       setSaving(false);
     }
@@ -45,56 +138,6 @@ export const ResultsScreen = () => {
     setShowLongitudinalAnalysis(true);
   };
 
-  const handleInitializeDatabase = async () => {
-    setInitializingDb(true);
-    try {
-      const success = await initializeDatabase();
-      if (success) {
-        alert('Base de datos inicializada correctamente');
-        checkDatabaseStatus();
-      } else {
-        alert('Error al inicializar la base de datos. Revisa la consola para más detalles.');
-      }
-    } catch (error) {
-      console.error('Error initializing database:', error);
-      alert('Error al inicializar la base de datos');
-    } finally {
-      setInitializingDb(false);
-    }
-  };
-
-  const checkDatabaseStatus = async () => {
-    try {
-      const status = await checkTables();
-      setDbStatus(status);
-    } catch (error) {
-      console.error('Error checking database status:', error);
-    }
-  };
-
-  // Check database status on component mount
-  useEffect(() => {
-    checkDatabaseStatus();
-  }, []);
-
-  const handleVerifySupabase = async () => {
-    console.clear();
-    console.log('🔍 VERIFICACIÓN DE SUPABASE INICIADA...');
-    try {
-      const result = await checkSupabaseTables();
-      await getTableInfo();
-
-      if (result.success) {
-        alert('✅ Base de datos verificada correctamente!\nRevisa la consola para detalles.');
-      } else {
-        alert('⚠️ Base de datos requiere configuración.\nRevisa la consola para instrucciones.');
-      }
-    } catch (error) {
-      console.error('Error en verificación:', error);
-      alert('❌ Error al verificar la base de datos');
-    }
-  };
-
   return (
     <div className="page">
       <span className="step-indicator">Paso 5 · Resultados</span>
@@ -103,8 +146,77 @@ export const ResultsScreen = () => {
         <p>Interpretación automáticamente generada. Usa estos datos para orientar la valoración clínica.</p>
       </header>
 
+      {videoUrl && (
+        <section className="card video-shell">
+          <h2>Video con esqueleto y eventos</h2>
+          <div className="video-stage">
+            <video ref={videoRef} controls src={videoUrl} playsInline />
+            <PoseOverlay
+              mode="playback"
+              videoRef={videoRef}
+              frames={session.poseFrames ?? []}
+              visible={showSkeleton && (session.poseFrames?.length ?? 0) > 0}
+            />
+          </div>
+          <label className="touch-checkbox-label" style={{ color: '#cbd5e1' }}>
+            <input
+              type="checkbox"
+              checked={showSkeleton}
+              onChange={(event) => setShowSkeleton(event.target.checked)}
+            />
+            <span>Mostrar puntos corporales sobre el video</span>
+          </label>
+          {showSkeleton && <PoseLegend />}
+          {sortedEvents.length > 0 && (
+            <>
+              <div className="event-timeline">
+                <div className="event-track">
+                  <div
+                    className="event-playhead"
+                    style={{ left: `${Math.min(100, (videoTime / timelineDuration) * 100)}%` }}
+                  />
+                  {sortedEvents.map((event) => (
+                    <button
+                      key={event.id}
+                      type="button"
+                      className={`event-marker ${event.type === 'toe_off' ? 'toeoff' : 'heelstrike'}`}
+                      style={{ left: `${Math.min(100, (event.timestamp / timelineDuration) * 100)}%` }}
+                      title={`${event.type} ${event.foot} · ${event.timestamp.toFixed(2)} s`}
+                      onClick={() => jumpToEvent(event.timestamp)}
+                    />
+                  ))}
+                </div>
+                <div className="event-timeline-labels">
+                  <span>0.0 s</span>
+                  <span>{timelineDuration.toFixed(1)} s</span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {sortedEvents.map((event) => (
+                  <button
+                    key={`chip-${event.id}`}
+                    type="button"
+                    className="badge medium"
+                    title={`${event.type} ${event.foot}`}
+                    onClick={() => jumpToEvent(event.timestamp)}
+                  >
+                    {event.type === 'heel_strike' ? 'IC' : event.type === 'toe_off' ? 'TO' : event.type} {event.foot}:{' '}
+                    {event.timestamp.toFixed(2)}s
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
       <section className="card">
         <h2>Métricas temporoespaciales</h2>
+        {lowConfidencePct > 30 && (
+          <p className="helper-text" style={{ color: '#b91c1c', fontWeight: 600 }}>
+            Datos de baja calidad: {Math.round(lowConfidencePct)}% de frames con baja visibilidad. Interpretar con precaución.
+          </p>
+        )}
         <div className="metric-grid">
           <div className="metric-card card">
             <h3>Velocidad</h3>
@@ -144,6 +256,31 @@ export const ResultsScreen = () => {
         ) : (
           <p className="helper-text">Calidad adecuada para usar las métricas con confianza moderada.</p>
         )}
+        {visibilitySeries.length > 1 && (
+          <div>
+            <p className="helper-text" style={{ marginBottom: '0.4rem' }}>
+              Confianza de landmarks en el tiempo
+            </p>
+            <svg viewBox="0 0 320 72" width="100%" height="72" aria-label="Curva de confianza de pose">
+              <rect x="0" y="0" width="320" height="72" fill="#f8fafc" rx="8" />
+              <line x1="0" y1="50" x2="320" y2="50" stroke="#e2e8f0" strokeWidth="1" />
+              <line x1="0" y1="36" x2="320" y2="36" stroke="#fde68a" strokeWidth="1" />
+              <line x1="0" y1="22" x2="320" y2="22" stroke="#bbf7d0" strokeWidth="1" />
+              <polyline
+                fill="none"
+                stroke="#2563eb"
+                strokeWidth="2"
+                points={visibilitySeries
+                  .map((point, idx) => {
+                    const x = (idx / (visibilitySeries.length - 1)) * 320;
+                    const y = 64 - Math.max(0, Math.min(1, point.v)) * 50;
+                    return `${x},${y}`;
+                  })
+                  .join(' ')}
+              />
+            </svg>
+          </div>
+        )}
       </section>
 
       <section className="card">
@@ -172,47 +309,78 @@ export const ResultsScreen = () => {
         <OGSValidationPanel
           ogsAnalysis={session.ogs}
           advancedMetrics={session.advancedMetrics}
-          kinematics={undefined}
-          compensations={undefined}
+          kinematics={enhancedAnalysisResult?.kinematicSummary}
+          compensations={enhancedAnalysisResult?.compensationAnalysis}
         />
       )}
+
+      {/* ─── Visualización de Fases de la Marcha ─── */}
+      <GaitPhaseDiagram
+        ogsLeft={session.ogs?.leftScore}
+        ogsRight={session.ogs?.rightScore}
+      />
+
+      {/* ─── Cinemática Articular ─── */}
+      <section className="card" style={{ display: 'grid', gap: '0.75rem' }}>
+        <h2>Cinemática Articular</h2>
+        <p className="helper-text">
+          Ángulos articulares (azul=izq, rojo=der) con bandas normativas (gris ±1 DE)
+        </p>
+        <KinematicChartCanvas
+          jointIndex={0}
+          patientProfile={session.patient}
+          patientDataLeft={
+            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.hipFlexion?.left?.summary?.normalizedCycles?.mean101 ??
+            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.hipFlexion?.left?.series?.angles ??
+            null
+          }
+          patientDataRight={
+            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.hipFlexion?.right?.summary?.normalizedCycles?.mean101 ??
+            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.hipFlexion?.right?.series?.angles ??
+            null
+          }
+        />
+        <KinematicChartCanvas
+          jointIndex={1}
+          patientProfile={session.patient}
+          patientDataLeft={
+            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.kneeFlexion?.left?.summary?.normalizedCycles?.mean101 ??
+            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.kneeFlexion?.left?.series?.angles ??
+            null
+          }
+          patientDataRight={
+            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.kneeFlexion?.right?.summary?.normalizedCycles?.mean101 ??
+            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.kneeFlexion?.right?.series?.angles ??
+            null
+          }
+        />
+        <KinematicChartCanvas
+          jointIndex={2}
+          patientProfile={session.patient}
+          patientDataLeft={
+            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.ankleFlexion?.left?.summary?.normalizedCycles?.mean101 ??
+            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.ankleFlexion?.left?.series?.angles ??
+            null
+          }
+          patientDataRight={
+            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.ankleFlexion?.right?.summary?.normalizedCycles?.mean101 ??
+            session.enhancedAnalysisResult?.kinematicSummary?.kinematicData?.sagittal?.ankleFlexion?.right?.series?.angles ??
+            null
+          }
+        />
+      </section>
+
+      <section className="card" style={{ display: 'grid', gap: '0.75rem' }}>
+        <h2>Simetría y fases</h2>
+        <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+          <SymmetryRadarChart data={symmetryRadarData} />
+          <PhaseHeatmap summary={session.enhancedAnalysisResult?.kinematicSummary} />
+        </div>
+      </section>
 
       {/* Almacenamiento y análisis longitudinal */}
       <section className="card">
         <h2>Almacenamiento y análisis longitudinal</h2>
-
-        {/* Database Status */}
-        {dbStatus && (
-          <div style={{ marginBottom: '1rem', padding: '0.75rem', backgroundColor: '#f9fafb', borderRadius: '6px' }}>
-            <div style={{ fontSize: '0.9rem' }}>
-              <strong>Estado de la base de datos:</strong>
-              <span style={{ marginLeft: '0.5rem', color: dbStatus.gaitTable && dbStatus.sessionTable ? '#15803d' : '#dc2626' }}>
-                {dbStatus.gaitTable && dbStatus.sessionTable ? '✓ Conectada' : '⚠ Requiere inicialización'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={handleVerifySupabase}
-                style={{ fontSize: '0.9rem' }}
-              >
-                🔍 Verificar Supabase
-              </button>
-              {(!dbStatus.gaitTable || !dbStatus.sessionTable) && (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={handleInitializeDatabase}
-                  disabled={initializingDb}
-                  style={{ fontSize: '0.9rem' }}
-                >
-                  {initializingDb ? 'Inicializando...' : 'Inicializar base de datos'}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
 
         <div style={{ marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
@@ -220,13 +388,15 @@ export const ResultsScreen = () => {
               type="button"
               className="primary-button"
               onClick={handleSaveSession}
-              disabled={saving || !dbStatus?.gaitTable || !dbStatus?.sessionTable}
-              style={{ opacity: saving || (!dbStatus?.gaitTable || !dbStatus?.sessionTable) ? 0.6 : 1 }}
+              disabled={saving || !user}
+              style={{ opacity: saving || !user ? 0.6 : 1 }}
             >
               {saving ? 'Guardando...' : 'Guardar sesión en base de datos'}
             </button>
             <span style={{ fontSize: '0.9rem', color: '#6b7280' }}>
-              Los datos se guardarán en formato CSV compatible para análisis
+              {user
+                ? 'Se guardan metricas clinicas, series cinematicas y fotogramas clave compactos.'
+                : 'Inicia sesion para guardar sesiones en Supabase.'}
             </span>
           </div>
         </div>
@@ -260,10 +430,15 @@ export const ResultsScreen = () => {
         )}
       </section>
 
-      <div className="button-row">
+      <div className="button-row page-actions">
         <button type="button" className="secondary-button" onClick={() => navigate('/events')}>
           Ajustar anotaciones
         </button>
+        {session.captureSettings.viewMode === 'dual' && (
+          <button type="button" className="secondary-button" onClick={handleCaptureFrontalComplement}>
+            Capturar vista frontal complementaria
+          </button>
+        )}
         <button type="button" className="primary-button" onClick={() => navigate('/report')}>
           Generar informe
         </button>

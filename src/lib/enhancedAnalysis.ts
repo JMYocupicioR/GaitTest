@@ -1,8 +1,16 @@
 import { computeMetrics } from './metrics.ts';
 import { computeAdvancedMetrics } from './advancedMetrics.ts';
 import { evaluatePatterns } from './patterns.ts';
-import { MLPatternDetector } from './mlPatterns.ts';
 import { KinematicAnalyzer } from './kinematicAnalysis.ts';
+import { FrontalGaitAnalyzer } from './frontalAnalysis.ts';
+import type { FrontalMetrics } from './frontalAnalysis.ts';
+import { CompensationDetector } from './compensationDetection.ts';
+import type { CompensationAnalysis } from './compensationDetection.ts';
+import { AdvancedEventDetector } from './advancedEventDetection.ts';
+import type { DetectedGaitEvent, GaitCycle } from './advancedEventDetection.ts';
+import { GaitCycleAnalyzer } from './gaitCycleAnalysis.ts';
+import type { GaitCycleComparison } from './gaitCycleAnalysis.ts';
+import { applyLandmarkFiltering } from './signalProcessing.ts';
 import type { DetailedKinematics, KinematicSummary } from '../types/session.ts';
 import type {
   GaitEvent,
@@ -10,10 +18,13 @@ import type {
   CaptureQuality,
   ObservationChecklist,
   AdvancedMetrics,
+  ClinicalAnalysisSnapshot,
   PatternFlag,
-  SessionMetrics
+  SessionMetrics,
 } from '../types/session.ts';
 import type { PoseFrame } from './poseEstimation.ts';
+
+type MLPatternDetectorType = import('./mlPatterns.ts').MLPatternDetector;
 
 export interface EnhancedAnalysisInput {
   events: GaitEvent[];
@@ -40,13 +51,23 @@ export interface EnhancedAnalysisResult {
   kinematicReport?: string;
   qualityScore: number;
   processingTime: number;
+  compensationAnalysis?: CompensationAnalysis;
+  frontalMetrics?: FrontalMetrics;
+  cycleAnalysis?: GaitCycleComparison;
+  detectedGaitCycles?: GaitCycle[];
+  /** Rellenado en sessionStore tras MedicalReportGenerator (mismo que PDF/BD). */
+  pathologyAnalysis?: ClinicalAnalysisSnapshot['pathologyAnalysis'];
 }
 
 export class EnhancedGaitAnalyzer {
-  private mlDetector: MLPatternDetector;
+  private mlDetectorPromise: Promise<MLPatternDetectorType> | null = null;
 
-  constructor() {
-    this.mlDetector = new MLPatternDetector();
+  private loadMLDetector(): Promise<MLPatternDetectorType> {
+    if (!this.mlDetectorPromise) {
+      this.mlDetectorPromise = import('./mlPatterns.ts').then(({ MLPatternDetector }) => new MLPatternDetector());
+    }
+
+    return this.mlDetectorPromise;
   }
 
   public async performCompleteAnalysis(input: EnhancedAnalysisInput): Promise<EnhancedAnalysisResult> {
@@ -65,19 +86,56 @@ export class EnhancedGaitAnalyzer {
       distanceMeters: input.captureSettings.distanceMeters,
       durationSeconds: input.quality.durationSeconds,
       poseFrames: input.poseFrames || [],
-      baseMetrics: basicMetrics
+      baseMetrics: basicMetrics,
+      frameGroundWidthMeters: input.captureSettings.frameGroundWidthMeters ?? null,
+      pxPerMeter: input.captureSettings.pxPerMeter ?? null,
     });
 
     let detailedKinematics: DetailedKinematics | undefined;
     let kinematicSummary: KinematicSummary | undefined;
     let kinematicReport: string | undefined;
+    let compensationAnalysis: CompensationAnalysis | undefined;
+    let frontalMetrics: FrontalMetrics | undefined;
+    let cycleAnalysis: GaitCycleComparison | undefined;
+    let detectedGaitCycles: GaitCycle[] | undefined;
 
-    if (input.poseFrames && input.poseFrames.length >= 10) {
+    const fpsForFiltering =
+      (input.quality.fpsDetected && Number.isFinite(input.quality.fpsDetected)
+        ? input.quality.fpsDetected
+        : input.captureSettings.targetFps) || 30;
+    const filteredPoseFrames =
+      input.poseFrames && input.poseFrames.length > 0
+        ? applyLandmarkFiltering(input.poseFrames, 6, fpsForFiltering)
+        : [];
+
+    if (filteredPoseFrames.length >= 10) {
       const kinematicAnalyzer = new KinematicAnalyzer(input.captureSettings.viewMode);
-      input.poseFrames.forEach(frame => kinematicAnalyzer.processFrame(frame));
+      filteredPoseFrames.forEach(frame => kinematicAnalyzer.processFrame(frame));
       detailedKinematics = kinematicAnalyzer.calculateDetailedKinematics();
-      kinematicSummary = kinematicAnalyzer.generateKinematicSummary(detailedKinematics);
+
+      const frontalAnalyzer = new FrontalGaitAnalyzer();
+      filteredPoseFrames.forEach(frame => frontalAnalyzer.processFrame(frame));
+      frontalMetrics = frontalAnalyzer.calculateFrontalMetrics();
+
+      const eventDetector = new AdvancedEventDetector();
+      const detectedEvents: DetectedGaitEvent[] = [];
+      eventDetector.setEventCallback((event) => {
+        detectedEvents.push(event);
+      });
+      filteredPoseFrames.forEach(frame => eventDetector.processFrame(frame));
+      detectedGaitCycles = eventDetector.generateGaitCycles(detectedEvents);
+
+      kinematicSummary = kinematicAnalyzer.generateKinematicSummary(detailedKinematics, detectedGaitCycles);
       kinematicReport = kinematicAnalyzer.generateKinematicReport(kinematicSummary);
+
+      const compensationDetector = new CompensationDetector(input.captureSettings.viewMode);
+      filteredPoseFrames.forEach(frame => compensationDetector.processFrame(frame));
+      compensationAnalysis = compensationDetector.detectCompensations(kinematicSummary, frontalMetrics);
+
+      if (detectedGaitCycles.length > 1) {
+        const cycleAnalyzer = new GaitCycleAnalyzer();
+        cycleAnalysis = cycleAnalyzer.analyzeGaitCycles(detectedGaitCycles) ?? undefined;
+      }
     }
 
     // 3. Traditional pattern evaluation
@@ -89,9 +147,10 @@ export class EnhancedGaitAnalyzer {
     });
 
     // 4. ML-based pattern detection
-    const mlProbabilities = await this.mlDetector.classifyGaitPattern(advancedMetrics);
-    const anomalies = this.mlDetector.detectAnomalies(advancedMetrics);
-    const mlPatterns = this.mlDetector.generateAdvancedPatternFlags(
+    const mlDetector = await this.loadMLDetector();
+    const mlProbabilities = await mlDetector.classifyGaitPattern(advancedMetrics);
+    const anomalies = mlDetector.detectAnomalies(advancedMetrics);
+    const mlPatterns = mlDetector.generateAdvancedPatternFlags(
       advancedMetrics,
       mlProbabilities,
       anomalies
@@ -101,10 +160,10 @@ export class EnhancedGaitAnalyzer {
     const combinedPatterns = this.combinePatternAnalyses(traditionalPatterns, mlPatterns);
 
     // 6. Risk assessment
-    const riskAssessment = this.mlDetector.assessFallRisk(advancedMetrics);
+    const riskAssessment = mlDetector.assessFallRisk(advancedMetrics);
 
     // 7. Quality assessment
-    const qualityScore = this.calculateQualityScore(input.quality, input.events, input.poseFrames || []);
+    const qualityScore = this.calculateQualityScore(input.quality, input.events, filteredPoseFrames);
 
     const processingTime = performance.now() - startTime;
 
@@ -119,7 +178,11 @@ export class EnhancedGaitAnalyzer {
       kinematicSummary,
       kinematicReport,
       qualityScore,
-      processingTime
+      processingTime,
+      compensationAnalysis,
+      frontalMetrics,
+      cycleAnalysis,
+      detectedGaitCycles
     };
   }
 

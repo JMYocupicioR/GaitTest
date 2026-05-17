@@ -1,6 +1,12 @@
 import * as tf from '@tensorflow/tfjs';
 import type { AdvancedMetrics, PatternFlag, PatternStatus } from '../types/session.ts';
 
+/** Versión esperada del modelo exportado (documentar junto al artifact model.json). */
+export const GAIT_ML_MODEL_SCHEMA_VERSION = '1.0.0';
+
+/** Umbral mínimo de probabilidad para emitir flags ML (evita ruido). */
+const ML_PATTERN_PROB_THRESHOLD = 0.35;
+
 export interface PatternProbabilities {
   antalgic: number;
   trendelenburg: number;
@@ -29,128 +35,83 @@ export interface RiskScore {
 export class MLPatternDetector {
   private model: tf.LayersModel | null = null;
   private isInitialized = false;
+  private hasPretrainedWeights = false;
 
   constructor() {
-    this.initializeModel();
+    void this.initializeModel();
   }
 
   private async initializeModel(): Promise<void> {
     try {
-      // Create a simple neural network for gait pattern classification
-      this.model = tf.sequential({
-        layers: [
-          tf.layers.dense({
-            inputShape: [20], // 20 features from metrics
-            units: 64,
-            activation: 'relu'
-          }),
-          tf.layers.dropout({ rate: 0.3 }),
-          tf.layers.dense({
-            units: 32,
-            activation: 'relu'
-          }),
-          tf.layers.dropout({ rate: 0.2 }),
-          tf.layers.dense({
-            units: 8, // 8 gait patterns
-            activation: 'softmax'
-          })
-        ]
-      });
-
-      this.model.compile({
-        optimizer: 'adam',
-        loss: 'categoricalCrossentropy',
-        metrics: ['accuracy']
-      });
-
-      // Initialize with pre-trained weights (in real scenario, load from server)
       await this.loadPretrainedWeights();
+
+      if (!this.hasPretrainedWeights) {
+        // Red ligera solo para entorno sin pesos remotos (inferencia desactivada → fallback heurístico).
+        this.model = tf.sequential({
+          layers: [
+            tf.layers.dense({
+              inputShape: [20],
+              units: 64,
+              activation: 'relu',
+            }),
+            tf.layers.dropout({ rate: 0.3 }),
+            tf.layers.dense({
+              units: 32,
+              activation: 'relu',
+            }),
+            tf.layers.dropout({ rate: 0.2 }),
+            tf.layers.dense({
+              units: 8,
+              activation: 'softmax',
+            }),
+          ],
+        });
+
+        this.model.compile({
+          optimizer: 'adam',
+          loss: 'categoricalCrossentropy',
+          metrics: ['accuracy'],
+        });
+      }
+
       this.isInitialized = true;
     } catch (error) {
       console.error('Failed to initialize ML model:', error);
     }
   }
 
+  /**
+   * Si existe `VITE_GAIT_ML_MODEL_URL` apuntando a un model.json de TensorFlow.js
+   * (softmax 8 clases: normal, antalgic, trendelenburg, steppage, parkinsonian, ataxic, hemiplegic, diplegic),
+   * se usa inferencia real; si no, `hasPretrainedWeights` queda en false y se usan reglas.
+   */
   private async loadPretrainedWeights(): Promise<void> {
-    // In a real implementation, you would load weights from a server
-    // For now, we'll initialize with random weights and use rule-based logic as fallback
-
-    // Generate synthetic training data for demonstration
-    const trainingData = this.generateSyntheticTrainingData();
-
-    if (this.model && trainingData.features.length > 0) {
-      const xs = tf.tensor2d(trainingData.features);
-      const ys = tf.tensor2d(trainingData.labels);
-
-      await this.model.fit(xs, ys, {
-        epochs: 50,
-        batchSize: 32,
-        validationSplit: 0.2,
-        verbose: 0
-      });
-
-      xs.dispose();
-      ys.dispose();
+    const raw =
+      typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_GAIT_ML_MODEL_URL
+        ? String(import.meta.env.VITE_GAIT_ML_MODEL_URL).trim()
+        : '';
+    if (!raw) {
+      this.hasPretrainedWeights = false;
+      return;
     }
-  }
-
-  private generateSyntheticTrainingData(): { features: number[][]; labels: number[][] } {
-    const features: number[][] = [];
-    const labels: number[][] = [];
-
-    // Generate synthetic data for each pattern
-    const patterns = [
-      'normal', 'antalgic', 'trendelenburg', 'steppage',
-      'parkinsonian', 'ataxic', 'hemiplegic', 'diplegic'
-    ];
-
-    for (let patternIndex = 0; patternIndex < patterns.length; patternIndex++) {
-      for (let sample = 0; sample < 50; sample++) {
-        const feature = this.generatePatternFeatures(patterns[patternIndex]);
-        const label = new Array(8).fill(0);
-        label[patternIndex] = 1;
-
-        features.push(feature);
-        labels.push(label);
+    try {
+      const loaded = await tf.loadLayersModel(raw);
+      if (this.model) {
+        this.model.dispose();
+        this.model = null;
       }
+      this.model = loaded;
+      this.hasPretrainedWeights = true;
+      console.info(`[GaitML] Model loaded (${GAIT_ML_MODEL_SCHEMA_VERSION}) from`, raw);
+    } catch (e) {
+      console.warn('[GaitML] VITE_GAIT_ML_MODEL_URL set but load failed; using heuristic fallback.', e);
+      this.hasPretrainedWeights = false;
+      this.model = null;
     }
-
-    return { features, labels };
-  }
-
-  private generatePatternFeatures(pattern: string): number[] {
-    const baseFeatures = new Array(20).fill(0);
-
-    switch (pattern) {
-      case 'antalgic':
-        baseFeatures[0] = Math.random() * 0.8 + 1.0; // Speed
-        baseFeatures[1] = Math.random() * 30 + 90; // Cadence
-        baseFeatures[2] = Math.random() * 15 + 10; // Asymmetry %
-        baseFeatures[3] = Math.random() * 0.2 + 0.3; // Step length
-        break;
-      case 'parkinsonian':
-        baseFeatures[0] = Math.random() * 0.5 + 0.5; // Slow speed
-        baseFeatures[1] = Math.random() * 20 + 110; // High cadence
-        baseFeatures[2] = Math.random() * 5 + 2; // Low asymmetry
-        baseFeatures[3] = Math.random() * 0.15 + 0.25; // Short steps
-        break;
-      case 'ataxic':
-        baseFeatures[4] = Math.random() * 30 + 20; // High variability
-        baseFeatures[5] = Math.random() * 0.3 + 0.4; // Wide base
-        baseFeatures[6] = Math.random() * 20 + 15; // Poor stability
-        break;
-      default: // normal
-        baseFeatures[0] = Math.random() * 0.4 + 1.2; // Normal speed
-        baseFeatures[1] = Math.random() * 20 + 100; // Normal cadence
-        baseFeatures[2] = Math.random() * 5 + 1; // Low asymmetry
-        baseFeatures[3] = Math.random() * 0.2 + 0.6; // Normal step length
-    }
-
-    return baseFeatures;
   }
 
   public async classifyGaitPattern(metrics: AdvancedMetrics): Promise<PatternProbabilities> {
-    if (!this.isInitialized || !this.model) {
+    if (!this.isInitialized || !this.model || !this.hasPretrainedWeights) {
       return this.fallbackClassification(metrics);
     }
 
@@ -172,7 +133,7 @@ export class MLPatternDetector {
         parkinsonian: probabilities[4],
         ataxic: probabilities[5],
         hemiplegic: probabilities[6],
-        diplegic: probabilities[7]
+        diplegic: probabilities[7],
       };
     } catch (error) {
       console.error('ML classification failed, using fallback:', error);
@@ -299,7 +260,7 @@ export class MLPatternDetector {
   public assessFallRisk(metrics: AdvancedMetrics): RiskScore {
     let riskScore = 0;
     let mobilityScore = 0;
-    const confidence = 0.7;
+    const confidence = this.hasPretrainedWeights ? 0.85 : 0.7;
 
     // Speed-based risk
     if (metrics.speedMps) {
@@ -368,12 +329,12 @@ export class MLPatternDetector {
       if (probability > 0.7) status = 'likely';
       else if (probability > 0.4) status = 'possible';
 
-      if (probability > 0.3) {
+      if (probability > ML_PATTERN_PROB_THRESHOLD) {
         flags.push({
           id: `ml_${pattern}`,
           label: `Patrón ${pattern} (ML)`,
           status,
-          rationale: `Modelo ML detecta probabilidad ${(probability * 100).toFixed(1)}% para patrón ${pattern}.`
+          rationale: `Modelo ML detecta probabilidad ${(probability * 100).toFixed(1)}% para patrón ${pattern}.`,
         });
       }
     });

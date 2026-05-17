@@ -4,6 +4,7 @@ interface MetricInputs {
   events: Array<{
     foot: 'L' | 'R';
     timestamp: number;
+    type?: 'heel_strike' | 'toe_off' | string;
   }>;
   distanceMeters: number | null;
   durationSeconds: number | null;
@@ -19,10 +20,12 @@ const average = (values: number[]): number | null => {
 
 export const computeMetrics = ({ events, distanceMeters, durationSeconds }: MetricInputs): SessionMetrics => {
   const sortedEvents = [...events].sort((a, b) => a.timestamp - b.timestamp);
-  const steps = sortedEvents.length;
+  const heelStrikes = sortedEvents.filter((event) => !event.type || event.type === 'heel_strike');
+  const toeOffs = sortedEvents.filter((event) => event.type === 'toe_off');
+  const steps = heelStrikes.length;
 
-  const firstTimestamp = sortedEvents.at(0)?.timestamp ?? null;
-  const lastTimestamp = sortedEvents.at(-1)?.timestamp ?? null;
+  const firstTimestamp = heelStrikes.at(0)?.timestamp ?? sortedEvents.at(0)?.timestamp ?? null;
+  const lastTimestamp = heelStrikes.at(-1)?.timestamp ?? sortedEvents.at(-1)?.timestamp ?? null;
 
   const derivedDuration =
     firstTimestamp !== null && lastTimestamp !== null ? Math.max(lastTimestamp - firstTimestamp, 0) : null;
@@ -41,9 +44,9 @@ export const computeMetrics = ({ events, distanceMeters, durationSeconds }: Metr
     delta: number;
   }> = [];
 
-  for (let i = 1; i < sortedEvents.length; i += 1) {
-    const current = sortedEvents[i];
-    const prev = sortedEvents[i - 1];
+  for (let i = 1; i < heelStrikes.length; i += 1) {
+    const current = heelStrikes[i];
+    const prev = heelStrikes[i - 1];
     const delta = current.timestamp - prev.timestamp;
     if (delta > 0.05) {
       stepIntervals.push({ foot: current.foot, delta });
@@ -64,8 +67,8 @@ export const computeMetrics = ({ events, distanceMeters, durationSeconds }: Metr
   const stanceDurationsLeft: number[] = [];
   const stanceDurationsRight: number[] = [];
 
-  sortedEvents.forEach((event, index) => {
-    const nextOpposite = sortedEvents.slice(index + 1).find((candidate) => candidate.foot !== event.foot);
+  heelStrikes.forEach((event, index) => {
+    const nextOpposite = heelStrikes.slice(index + 1).find((candidate) => candidate.foot !== event.foot);
     if (!nextOpposite) {
       return;
     }
@@ -80,8 +83,27 @@ export const computeMetrics = ({ events, distanceMeters, durationSeconds }: Metr
     }
   });
 
-  const stanceTimeLeft = average(stanceDurationsLeft);
-  const stanceTimeRight = average(stanceDurationsRight);
+  // Prefer stance time derived from ipsilateral IC -> TO pairs.
+  const icToToByFoot = { L: [] as number[], R: [] as number[] };
+  for (const ic of heelStrikes) {
+    const nextToeOff = toeOffs.find((toe) => toe.foot === ic.foot && toe.timestamp > ic.timestamp);
+    if (!nextToeOff) continue;
+    const sameFootNextIc = heelStrikes.find(
+      (hs) => hs.foot === ic.foot && hs.timestamp > ic.timestamp,
+    );
+    if (sameFootNextIc && nextToeOff.timestamp >= sameFootNextIc.timestamp) {
+      continue;
+    }
+    const delta = nextToeOff.timestamp - ic.timestamp;
+    if (delta > 0) {
+      icToToByFoot[ic.foot].push(delta);
+    }
+  }
+
+  const fallbackStanceLeft = average(stanceDurationsLeft);
+  const fallbackStanceRight = average(stanceDurationsRight);
+  const stanceTimeLeft = average(icToToByFoot.L) ?? fallbackStanceLeft;
+  const stanceTimeRight = average(icToToByFoot.R) ?? fallbackStanceRight;
 
   let stanceAsymmetryPct: number | null = null;
   if (stanceTimeLeft && stanceTimeRight) {

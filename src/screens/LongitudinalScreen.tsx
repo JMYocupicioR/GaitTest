@@ -70,7 +70,7 @@ export const LongitudinalScreen = () => {
         <div className="card" style={{ textAlign: 'center' }}>
           <h2 style={{ color: '#dc2626' }}>Error</h2>
           <p>{error}</p>
-          <button onClick={() => navigate('/')} className="primary-button">
+          <button onClick={() => navigate('/start')} className="primary-button">
             Volver al inicio
           </button>
         </div>
@@ -238,7 +238,7 @@ export const LongitudinalScreen = () => {
       {sessions.length > 0 && (
         <section className="card">
           <h2>Historial de Sesiones</h2>
-          <div style={{ overflowX: 'auto' }}>
+          <div className="longitudinal-table-wrap">
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
@@ -276,6 +276,43 @@ export const LongitudinalScreen = () => {
               </tbody>
             </table>
           </div>
+          <div className="longitudinal-cards">
+            {sessions.slice(0, 10).map((session) => (
+              <article key={`card-${session.sessionId}`} className="longitudinal-card">
+                <div className="longitudinal-card-row">
+                  <span>Fecha</span>
+                  <strong>{formatDate(session.date)}</strong>
+                </div>
+                <div className="longitudinal-card-row">
+                  <span>Velocidad</span>
+                  <strong>{session.metrics.speedMps?.toFixed(2) || '—'} m/s</strong>
+                </div>
+                <div className="longitudinal-card-row">
+                  <span>Cadencia</span>
+                  <strong>{session.metrics.cadenceSpm?.toFixed(0) || '—'} spm</strong>
+                </div>
+                <div className="longitudinal-card-row">
+                  <span>Riesgo</span>
+                  <strong>
+                    <span style={{
+                      color: session.riskScore > 70 ? '#dc2626' :
+                             session.riskScore > 40 ? '#f59e0b' : '#059669',
+                    }}
+                    >
+                      {session.riskScore}%
+                    </span>
+                  </strong>
+                </div>
+                <div className="longitudinal-card-row">
+                  <span>Patrones</span>
+                  <strong>
+                    {session.patternsSummary.slice(0, 2).join(', ')}
+                    {session.patternsSummary.length > 2 && '...'}
+                  </strong>
+                </div>
+              </article>
+            ))}
+          </div>
         </section>
       )}
 
@@ -284,7 +321,7 @@ export const LongitudinalScreen = () => {
         <button
           type="button"
           className="secondary-button"
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/start')}
         >
           Volver al inicio
         </button>

@@ -1,7 +1,24 @@
-﻿import type { RefObject } from 'react';
+import type { RefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 type RecorderState = 'idle' | 'preview' | 'recording' | 'complete';
+
+function describeGetUserMediaError(err: unknown): string {
+  if (typeof window !== 'undefined' && !window.isSecureContext) {
+    return 'La cámara solo funciona en HTTPS (o en localhost). Abre la URL https:// que muestra Vite al hacer npm run dev y acepta el aviso del certificado en el móvil.';
+  }
+  const e = err as DOMException | undefined;
+  if (e?.name === 'NotAllowedError' || e?.name === 'PermissionDeniedError') {
+    return 'Permiso de cámara denegado. Permítelo en los ajustes del sitio del navegador.';
+  }
+  if (e?.name === 'NotFoundError' || e?.name === 'DevicesNotFoundError') {
+    return 'No se encontró ninguna cámara en este dispositivo.';
+  }
+  if (e?.name === 'NotReadableError' || e?.name === 'TrackStartError') {
+    return 'La cámara está en uso por otra aplicación. Ciérrala e inténtalo de nuevo.';
+  }
+  return 'No pudimos acceder a la cámara. Revisa permisos y vuelve a intentar.';
+}
 
 interface UseMediaRecorderOptions {
   targetFps: number;
@@ -18,6 +35,8 @@ interface UseMediaRecorderResult {
   recordedBlob: Blob | null;
   durationSeconds: number | null;
   fpsDetected: number | null;
+  /** Segundos desde startRecording (solo fiable durante state === 'recording'). */
+  getRecordingElapsedSeconds: () => number | null;
 }
 
 export const useMediaRecorder = ({ targetFps, videoRef }: UseMediaRecorderOptions): UseMediaRecorderResult => {
@@ -36,6 +55,13 @@ export const useMediaRecorder = ({ targetFps, videoRef }: UseMediaRecorderOption
   }, []);
 
   const startCamera = useCallback(async () => {
+    const existingTrack = mediaStreamRef.current?.getVideoTracks()[0];
+    if (existingTrack && existingTrack.readyState === 'live') {
+      setError(null);
+      setState('preview');
+      return;
+    }
+
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -57,9 +83,17 @@ export const useMediaRecorder = ({ targetFps, videoRef }: UseMediaRecorderOption
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
+      if (track.readyState === 'live') {
+        setError(null);
+      }
       setState('preview');
     } catch (err) {
-      setError('No pudimos acceder a la cámara. Revisa permisos y vuelve a intentar.');
+      const liveTrack = mediaStreamRef.current?.getVideoTracks()[0];
+      if (liveTrack && liveTrack.readyState === 'live') {
+        console.warn('Camera re-acquisition failed but existing stream is live, ignoring:', err);
+        return;
+      }
+      setError(describeGetUserMediaError(err));
       console.error(err);
     }
   }, [targetFps, videoRef]);
@@ -70,7 +104,11 @@ export const useMediaRecorder = ({ targetFps, videoRef }: UseMediaRecorderOption
     }
     const stream = mediaStreamRef.current;
     if (!stream) {
-      setError('No se detectó la cámara.');
+      setError(
+        typeof window !== 'undefined' && !window.isSecureContext
+          ? 'La cámara requiere HTTPS al abrir desde la IP de la red. Usa https://TU_IP:5173 (npm run dev) y acepta el certificado.'
+          : 'No se detectó la cámara. Revisa permisos o usa “Cargar video”.',
+      );
       return;
     }
 
@@ -132,6 +170,13 @@ export const useMediaRecorder = ({ targetFps, videoRef }: UseMediaRecorderOption
     stopTracks();
   }, [stopTracks]);
 
+  const getRecordingElapsedSeconds = useCallback((): number | null => {
+    if (state !== 'recording' || startTimeRef.current === null) {
+      return null;
+    }
+    return Math.max(0, (Date.now() - startTimeRef.current) / 1000);
+  }, [state]);
+
   return {
     state,
     error,
@@ -142,5 +187,6 @@ export const useMediaRecorder = ({ targetFps, videoRef }: UseMediaRecorderOption
     recordedBlob,
     durationSeconds,
     fpsDetected,
+    getRecordingElapsedSeconds,
   };
 };

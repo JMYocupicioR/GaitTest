@@ -1,7 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import { LongitudinalAnalyzer } from '../lib/longitudinalAnalysis.ts';
 import type { SessionComparison, LongitudinalReport, TrendAnalysis } from '../lib/longitudinalAnalysis.ts';
-import type { SessionData, AdvancedMetrics } from '../types/session.ts';
+import type { AdvancedMetrics, SessionData } from '../types/session.ts';
+import type { SessionRecord } from '../lib/supabase.ts';
+import { DataService } from '../services/dataService.ts';
 
 export interface UseLongitudinalAnalysisOptions {
   patientId?: string;
@@ -16,37 +18,44 @@ export const useLongitudinalAnalysis = (options: UseLongitudinalAnalysisOptions 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load sessions from localStorage or indexedDB
+  const mapSessionRecord = useCallback((session: SessionRecord): SessionComparison => {
+    const sourceMetrics = session.session_data?.metrics ?? {};
+    const patterns = Array.isArray(session.session_data?.patternFlags)
+      ? session.session_data.patternFlags.map((flag: { label?: string }) => flag.label ?? 'Sin etiqueta')
+      : [];
+
+    return {
+      sessionId: session.exam_id,
+      date: session.session_date,
+      metrics: sourceMetrics as AdvancedMetrics,
+      riskScore: calculateRiskScoreFromRecord(session),
+      patternsSummary: patterns,
+    };
+  }, []);
+
   const loadSessions = useCallback(async (patientId: string) => {
     setIsLoading(true);
     setError(null);
 
     try {
-      // In a real app, this would load from a database
-      const storedSessions = localStorage.getItem(`gait_sessions_${patientId}`);
-
-      if (storedSessions) {
-        const parsedSessions: SessionData[] = JSON.parse(storedSessions);
-
-        const sessionComparisons: SessionComparison[] = parsedSessions.map(session => ({
-          sessionId: session.sessionId,
-          date: session.createdAtIso,
-          metrics: session.metrics as AdvancedMetrics, // Type assertion for AdvancedMetrics
-          riskScore: calculateRiskScore(session),
-          patternsSummary: session.patternFlags.map(flag => flag.label)
-        }));
-
-        setSessions(sessionComparisons);
-
-        if (sessionComparisons.length >= 3) {
-          const trendAnalyses = analyzer.analyzeTrends(sessionComparisons);
-          setTrends(trendAnalyses);
-
-          const longitudinalReport = analyzer.generateLongitudinalReport(patientId, sessionComparisons);
-          setReport(longitudinalReport);
-        }
-      } else {
+      const remoteSessions = await DataService.getPatientSessions(patientId);
+      if (!remoteSessions.length) {
         setSessions([]);
+        setTrends([]);
+        setReport(null);
+        return;
+      }
+
+      const sessionComparisons = remoteSessions.map(mapSessionRecord);
+      setSessions(sessionComparisons);
+
+      if (sessionComparisons.length >= 3) {
+        const trendAnalyses = analyzer.analyzeTrends(sessionComparisons);
+        setTrends(trendAnalyses);
+
+        const longitudinalReport = analyzer.generateLongitudinalReport(patientId, sessionComparisons);
+        setReport(longitudinalReport);
+      } else {
         setTrends([]);
         setReport(null);
       }
@@ -55,29 +64,22 @@ export const useLongitudinalAnalysis = (options: UseLongitudinalAnalysisOptions 
     } finally {
       setIsLoading(false);
     }
-  }, [analyzer]);
+  }, [analyzer, mapSessionRecord]);
 
-  // Save session to storage
+  // Save session to Supabase and refresh longitudinal analysis
   const saveSession = useCallback(async (sessionData: SessionData, patientId: string) => {
     try {
-      const storedSessions = localStorage.getItem(`gait_sessions_${patientId}`);
-      const existingSessions: SessionData[] = storedSessions ? JSON.parse(storedSessions) : [];
-
-      // Update existing session or add new one
-      const sessionIndex = existingSessions.findIndex(s => s.sessionId === sessionData.sessionId);
-      if (sessionIndex >= 0) {
-        existingSessions[sessionIndex] = sessionData;
-      } else {
-        existingSessions.push(sessionData);
+      const nextSession: SessionData = {
+        ...sessionData,
+        patient: {
+          ...sessionData.patient,
+          identifier: patientId,
+        },
+      };
+      const sessionId = await DataService.saveSession(nextSession);
+      if (!sessionId) {
+        throw new Error('No se pudo guardar la sesion en Supabase');
       }
-
-      // Sort by date and keep last 50 sessions
-      existingSessions.sort((a, b) => new Date(b.createdAtIso).getTime() - new Date(a.createdAtIso).getTime());
-      const limitedSessions = existingSessions.slice(0, 50);
-
-      localStorage.setItem(`gait_sessions_${patientId}`, JSON.stringify(limitedSessions));
-
-      // Reload analysis
       await loadSessions(patientId);
     } catch (err) {
       setError(`Error saving session: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -208,23 +210,25 @@ export const useLongitudinalAnalysis = (options: UseLongitudinalAnalysisOptions 
   };
 };
 
-// Helper function to calculate risk score from session data
-function calculateRiskScore(session: SessionData): number {
+function calculateRiskScoreFromRecord(session: SessionRecord): number {
   let risk = 0;
+  const metrics = session.session_data?.metrics ?? {};
+  const patternFlags = Array.isArray(session.session_data?.patternFlags) ? session.session_data.patternFlags : [];
+  const quality = session.session_data?.quality;
 
-  if (session.metrics.speedMps && session.metrics.speedMps < 1.0) {
+  if (metrics.speedMps && metrics.speedMps < 1.0) {
     risk += 30;
   }
 
-  if (session.metrics.stanceAsymmetryPct && session.metrics.stanceAsymmetryPct > 10) {
+  if (metrics.stanceAsymmetryPct && metrics.stanceAsymmetryPct > 10) {
     risk += 25;
   }
 
-  if (session.patternFlags.some(flag => flag.status === 'likely')) {
+  if (patternFlags.some((flag: { status?: string }) => flag.status === 'likely')) {
     risk += 20;
   }
 
-  if (session.quality.confidence === 'low') {
+  if (quality?.confidence === 'low') {
     risk += 10;
   }
 

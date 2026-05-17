@@ -40,6 +40,8 @@ export class AdvancedEventDetector {
   private frameBuffer: PoseFrame[] = [];
   private detectedEvents: DetectedGaitEvent[] = [];
   private onEventDetected?: (event: DetectedGaitEvent) => void;
+  private readonly eventHysteresisMs = 0.25;
+  private lastEventTimestamps = new Map<string, number>();
 
   constructor() {}
 
@@ -51,7 +53,7 @@ export class AdvancedEventDetector {
     this.frameBuffer.push(frame);
 
     // Keep only last 20 frames for analysis
-    if (this.frameBuffer.length > 20) {
+    if (this.frameBuffer.length > 30) {
       this.frameBuffer.shift();
     }
 
@@ -81,7 +83,7 @@ export class AdvancedEventDetector {
       'L'
     );
 
-    if (leftEvent && this.onEventDetected) {
+    if (leftEvent && this.onEventDetected && this.shouldEmit('heel_strike', 'L', currentFrame.timestamp)) {
       this.onEventDetected({
         ...(leftEvent as Partial<DetectedGaitEvent>),
         confidence: leftEvent.confidence ?? 0,
@@ -102,7 +104,7 @@ export class AdvancedEventDetector {
       'R'
     );
 
-    if (rightEvent && this.onEventDetected) {
+    if (rightEvent && this.onEventDetected && this.shouldEmit('heel_strike', 'R', currentFrame.timestamp)) {
       this.onEventDetected({
         ...(rightEvent as Partial<DetectedGaitEvent>),
         confidence: rightEvent.confidence ?? 0,
@@ -129,7 +131,7 @@ export class AdvancedEventDetector {
       'L'
     );
 
-    if (leftToeOff && this.onEventDetected) {
+    if (leftToeOff && this.onEventDetected && this.shouldEmit('toe_off', 'L', currentFrame.timestamp)) {
       this.onEventDetected({
         ...(leftToeOff as Partial<DetectedGaitEvent>),
         confidence: leftToeOff.confidence ?? 0,
@@ -150,7 +152,7 @@ export class AdvancedEventDetector {
       'R'
     );
 
-    if (rightToeOff && this.onEventDetected) {
+    if (rightToeOff && this.onEventDetected && this.shouldEmit('toe_off', 'R', currentFrame.timestamp)) {
       this.onEventDetected({
         ...(rightToeOff as Partial<DetectedGaitEvent>),
         confidence: rightToeOff.confidence ?? 0,
@@ -303,17 +305,24 @@ export class AdvancedEventDetector {
   }
 
   private analyzeHeelStrike(prevAnkle: any, currAnkle: any, _prevKnee: any, currKnee: any, foot: FootSide): Partial<DetectedGaitEvent> | null {
+    const smoothedPrevAnkle = this.smoothLandmarkForFoot(foot, 'ankle', 3);
+    const smoothedCurrAnkle = this.smoothLandmarkForFoot(foot, 'ankle', 1);
+    const smoothedCurrKnee = this.smoothLandmarkForFoot(foot, 'knee', 1);
+    const anklePrev = smoothedPrevAnkle ?? prevAnkle;
+    const ankleCurr = smoothedCurrAnkle ?? currAnkle;
+    const kneeCurr = smoothedCurrKnee ?? currKnee;
+
     // Heel strike: ankle stops moving downward and is at lowest point
-    const ankleVelocityY = currAnkle.y - prevAnkle.y;
-    const ankleBelowKnee = currAnkle.y > currKnee.y;
+    const ankleVelocityY = ankleCurr.y - anklePrev.y;
+    const ankleBelowKnee = ankleCurr.y > kneeCurr.y;
     const stoppedMoving = Math.abs(ankleVelocityY) < 0.005;
-    const goodVisibility = currAnkle.visibility > 0.7 && currKnee.visibility > 0.7;
+    const goodVisibility = ankleCurr.visibility > 0.7 && kneeCurr.visibility > 0.7;
 
     if (stoppedMoving && ankleBelowKnee && goodVisibility) {
       return {
         type: 'heel_strike',
         foot,
-        confidence: Math.min(0.9, (currAnkle.visibility + currKnee.visibility) / 2)
+        confidence: Math.min(0.9, (ankleCurr.visibility + kneeCurr.visibility) / 2)
       };
     }
 
@@ -321,21 +330,63 @@ export class AdvancedEventDetector {
   }
 
   private analyzeToeOff(prevAnkle: any, currAnkle: any, prevKnee: any, currKnee: any, foot: FootSide): Partial<DetectedGaitEvent> | null {
+    const smoothedPrevAnkle = this.smoothLandmarkForFoot(foot, 'ankle', 3);
+    const smoothedCurrAnkle = this.smoothLandmarkForFoot(foot, 'ankle', 1);
+    const smoothedPrevKnee = this.smoothLandmarkForFoot(foot, 'knee', 3);
+    const smoothedCurrKnee = this.smoothLandmarkForFoot(foot, 'knee', 1);
+    const anklePrev = smoothedPrevAnkle ?? prevAnkle;
+    const ankleCurr = smoothedCurrAnkle ?? currAnkle;
+    const kneePrev = smoothedPrevKnee ?? prevKnee;
+    const kneeCurr = smoothedCurrKnee ?? currKnee;
+
     // Toe-off: ankle starts moving upward rapidly, beginning of swing phase
-    const ankleVelocityY = currAnkle.y - prevAnkle.y;
+    const ankleVelocityY = ankleCurr.y - anklePrev.y;
     const ankleMovingUp = ankleVelocityY < -0.008; // Moving upward
-    const kneeStartingToFlex = currKnee.y < prevKnee.y; // Knee moving up (flexing)
-    const goodVisibility = currAnkle.visibility > 0.7 && currKnee.visibility > 0.7;
+    const kneeStartingToFlex = kneeCurr.y < kneePrev.y; // Knee moving up (flexing)
+    const goodVisibility = ankleCurr.visibility > 0.7 && kneeCurr.visibility > 0.7;
 
     if (ankleMovingUp && kneeStartingToFlex && goodVisibility) {
       return {
         type: 'toe_off',
         foot,
-        confidence: Math.min(0.85, (currAnkle.visibility + currKnee.visibility) / 2)
+        confidence: Math.min(0.85, (ankleCurr.visibility + kneeCurr.visibility) / 2)
       };
     }
 
     return null;
+  }
+
+  private smoothLandmarkForFoot(foot: FootSide, joint: 'ankle' | 'knee', sampleWindow = 3): any | null {
+    if (this.frameBuffer.length < sampleWindow) {
+      return null;
+    }
+    const recent = this.frameBuffer.slice(-sampleWindow);
+    const landmarks = recent.map((frame) =>
+      foot === 'L'
+        ? joint === 'ankle'
+          ? frame.leftAnkle
+          : frame.leftKnee
+        : joint === 'ankle'
+          ? frame.rightAnkle
+          : frame.rightKnee,
+    );
+    const count = landmarks.length;
+    return {
+      x: landmarks.reduce((sum, lm) => sum + lm.x, 0) / count,
+      y: landmarks.reduce((sum, lm) => sum + lm.y, 0) / count,
+      z: landmarks.reduce((sum, lm) => sum + lm.z, 0) / count,
+      visibility: landmarks.reduce((sum, lm) => sum + (lm.visibility ?? 0), 0) / count,
+    };
+  }
+
+  private shouldEmit(type: EventType, foot: FootSide, timestamp: number): boolean {
+    const key = `${type}-${foot}`;
+    const last = this.lastEventTimestamps.get(key);
+    if (last != null && Math.abs(timestamp - last) < this.eventHysteresisMs) {
+      return false;
+    }
+    this.lastEventTimestamps.set(key, timestamp);
+    return true;
   }
 
   private analyzeFootFlat(ankle: any, knee: any, foot: FootSide): Partial<DetectedGaitEvent> | null {

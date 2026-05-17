@@ -6,6 +6,10 @@ interface AdvancedMetricInputs {
   distanceMeters: number | null;
   durationSeconds: number | null;
   poseFrames?: PoseFrame[];
+  /** Ancho del suelo visible en el encuadre (m); escala Δx normalizado → metros. */
+  frameGroundWidthMeters?: number | null;
+  /** Escala visual (px por metro) obtenida por calibración manual/objeto. */
+  pxPerMeter?: number | null;
   baseMetrics: {
     speedMps: number | null;
     cadenceSpm: number | null;
@@ -39,7 +43,11 @@ const calculateHarmonicRatio = (accelerations: number[]): number | null => {
   return variability ? Math.max(0, 100 - variability) : null;
 };
 
-const calculateStepWidth = (poseFrames: PoseFrame[]): number | null => {
+const calculateStepWidth = (
+  poseFrames: PoseFrame[],
+  frameGroundWidthMeters: number | null | undefined,
+  pxPerMeter: number | null | undefined,
+): number | null => {
   if (poseFrames.length < 5) return null;
 
   const widths: number[] = [];
@@ -54,7 +62,17 @@ const calculateStepWidth = (poseFrames: PoseFrame[]): number | null => {
   if (widths.length === 0) return null;
 
   const avgWidth = widths.reduce((sum, w) => sum + w, 0) / widths.length;
-  // Convert normalized coordinates to approximate meters (assuming 640px ≈ 1.8m frame width)
+  const groundW =
+    frameGroundWidthMeters != null && Number.isFinite(frameGroundWidthMeters) && frameGroundWidthMeters > 0
+      ? frameGroundWidthMeters
+      : pxPerMeter != null && Number.isFinite(pxPerMeter) && pxPerMeter > 0
+        ? 1280 / pxPerMeter
+      : null;
+  // Normalized x is ~0–1 across frame width → metros = Δx * ancho_calibrado
+  if (groundW != null) {
+    return avgWidth * groundW;
+  }
+  // Legacy heuristic (640 px ≈ 1.8 m frame width)
   return avgWidth * 1.8;
 };
 
@@ -131,7 +149,7 @@ const calculateGaitPhases = (events: GaitEvent[], durationSeconds: number | null
 };
 
 export const computeAdvancedMetrics = (inputs: AdvancedMetricInputs): AdvancedMetrics => {
-  const { events, durationSeconds, poseFrames = [], baseMetrics } = inputs;
+  const { events, durationSeconds, poseFrames = [], baseMetrics, frameGroundWidthMeters, pxPerMeter } = inputs;
 
   // Basic metrics from input
   const basicMetrics = {
@@ -168,7 +186,7 @@ export const computeAdvancedMetrics = (inputs: AdvancedMetricInputs): AdvancedMe
   const strideLength = baseMetrics.stepLengthMeters ? baseMetrics.stepLengthMeters * 2 : null;
 
   // Spatial metrics from pose data
-  const stepWidth = calculateStepWidth(poseFrames);
+  const stepWidth = calculateStepWidth(poseFrames, frameGroundWidthMeters ?? null, pxPerMeter ?? null);
   const centerOfMassVariability = calculateCenterOfMassVariability(poseFrames);
 
   // Joint angles from pose data

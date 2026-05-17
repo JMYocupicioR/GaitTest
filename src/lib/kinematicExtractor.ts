@@ -25,6 +25,7 @@ export interface ExtractedKinematicValues {
   step_len_norm: number | null;      // Longitud de paso normalizada
   cadence_norm: number | null;       // Cadencia normalizada
   leg_len: number | null;            // Longitud de pierna estimada
+  data_source: 'measured' | 'estimated';
 }
 
 export class KinematicExtractor {
@@ -77,7 +78,8 @@ export class KinematicExtractor {
     return {
       left,
       right,
-      ...normalizationValues
+      ...normalizationValues,
+      data_source: 'measured',
     };
   }
 
@@ -112,7 +114,8 @@ export class KinematicExtractor {
       left,
       right,
       ...normalizationValues,
-      leg_len: legLength
+      leg_len: legLength,
+      data_source: 'estimated',
     };
   }
 
@@ -213,6 +216,7 @@ export class KinematicExtractor {
 
   // Métodos de estimación para cuando no hay análisis detallado
   private estimateHipFlexionIC(sessionData: SessionData, _side: 'left' | 'right'): number | null {
+    void _side;
     // Estimación basada en velocidad de marcha
     const speed = sessionData.metrics.speedMps;
     if (!speed) return null;
@@ -226,6 +230,7 @@ export class KinematicExtractor {
   }
 
   private estimateKneeFlexStance(sessionData: SessionData, _side: 'left' | 'right'): number | null {
+    void _side;
     // Flexión media de rodilla en apoyo: típicamente 5-15°
     const speed = sessionData.metrics.speedMps;
     if (!speed) return null;
@@ -237,17 +242,23 @@ export class KinematicExtractor {
   }
 
   private estimateKneeMaxExtension(_sessionData: SessionData, _side: 'left' | 'right'): number | null {
+    void _sessionData;
+    void _side;
     // Extensión máxima: típicamente -5 a +5°
     // Valor conservador
     return 2.0;
   }
 
   private estimateAnkleDorsiMax(_sessionData: SessionData, _side: 'left' | 'right'): number | null {
+    void _sessionData;
+    void _side;
     // Dorsiflexión máxima típica: 10-20°
     return 15.0;
   }
 
   private estimateAnklePlantarMax(_sessionData: SessionData, _side: 'left' | 'right'): number | null {
+    void _sessionData;
+    void _side;
     // Plantarflexión máxima típica: 15-25°
     return 20.0;
   }

@@ -143,7 +143,8 @@ export function useKinematicAnalysis(): UseKinematicAnalysisResult {
         speed_norm: null,
         step_len_norm: null,
         cadence_norm: null,
-        leg_len: null
+        leg_len: null,
+        data_source: 'estimated'
       };
     }
   }, []);

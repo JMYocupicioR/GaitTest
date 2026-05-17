@@ -1,5 +1,5 @@
-﻿export type ViewMode = 'lateral' | 'frontal' | 'dual';
-export type CalibrationType = 'line' | 'object' | 'none';
+export type ViewMode = 'lateral' | 'frontal' | 'dual';
+export type CalibrationType = 'line' | 'object' | 'manual' | 'none';
 export type QualityLevel = 'high' | 'medium' | 'low';
 export type FootSide = 'L' | 'R';
 
@@ -11,6 +11,15 @@ export interface CaptureSettings {
   calibrationType: CalibrationType;
   distanceMeters: number | null;
   targetFps: number;
+  /**
+   * Optional: ancho aproximado del suelo visible en el encuadre (m), para escalar posiciones
+   * normalizadas de MediaPipe en el eje horizontal (p. ej. ancho de paso).
+   * Si es null, se usan heurísticas legacy (p. ej. 1.8 m ≈ ancho de frame).
+   */
+  frameGroundWidthMeters: number | null;
+  pxPerMeter: number | null;
+  calibrationMethod: 'line_distance' | 'manual_click' | 'auto_object' | null;
+  calibrationConfidence: number | null;
 }
 
 export interface CaptureQuality {
@@ -154,6 +163,11 @@ export interface KinematicJointSummary {
   mean: number | null;
   standardDeviation: number | null;
   normalRange?: { min: number; max: number } | null;
+  normalizedCycles?: {
+    mean101: number[];
+    sd101: number[];
+    cycleCount: number;
+  } | null;
 }
 
 export interface JointAngleTimeSeries {
@@ -325,8 +339,43 @@ export interface ReportSummary {
   pdfUrl: string | null;
 }
 
+/** Resumen clínico unificado para UI, PDF y persistencia (misma fuente que MedicalReportGenerator). */
+export interface ClinicalAnalysisSnapshot {
+  schemaVersion: '1.0';
+  generatedAtIso: string;
+  primaryDiagnosis: string;
+  severity: 'mild' | 'moderate' | 'severe';
+  fallRiskCategory: 'low' | 'moderate' | 'high' | 'very_high';
+  mobilityLevel: 'independent' | 'assisted' | 'dependent';
+  /** Copia alineada con pathologyAnalyzer / informe médico (evita ciclo de tipos con pathologyAnalysis.ts). */
+  pathologyAnalysis: {
+    primaryFindings: Array<{
+      condition: string;
+      confidence: number;
+      evidence: string[];
+      severity: 'mild' | 'moderate' | 'severe';
+      recommendations: string[];
+    }>;
+    differentialDiagnosis: Array<{
+      condition: string;
+      confidence: number;
+      evidence: string[];
+      severity: 'mild' | 'moderate' | 'severe';
+      recommendations: string[];
+    }>;
+    riskFactors: {
+      fallRisk: number;
+      mobilityLevel: 'independent' | 'assisted' | 'dependent';
+      progressionRisk: number;
+    };
+    interventionPriorities: string[];
+    monitoringParameters: string[];
+  };
+}
+
 export interface SessionData {
   sessionId: string;
+  complementarySessionId?: string | null;
   createdAtIso: string;
   captureSettings: CaptureSettings;
   quality: CaptureQuality;
@@ -340,6 +389,7 @@ export interface SessionData {
     name?: string;
     identifier?: string;
     age?: number;
+    sex?: 'male' | 'female' | 'other';
     height?: number;
     weight?: number;
     clinicianNote?: string;
@@ -348,16 +398,9 @@ export interface SessionData {
   // Enhanced analysis fields
   advancedMetrics?: AdvancedMetrics;
   poseFrames?: any[];
+  clinicalAnalysisSnapshot?: ClinicalAnalysisSnapshot /** Snapshot post finalizeAnalysis; misma base que PDF/BD */;
   enhancedAnalysisResult?: {
-    pathologyAnalysis?: {
-      primaryFindings: Array<{
-        condition: string;
-        confidence: number;
-        evidence: string[];
-        severity: 'mild' | 'moderate' | 'severe';
-        recommendations: string[];
-      }>;
-    };
+    pathologyAnalysis?: ClinicalAnalysisSnapshot['pathologyAnalysis'];
     kinematicSummary?: KinematicSummary;
     kinematicValues?: {
       left: {

@@ -5,7 +5,7 @@ import { useSessionStore } from '../state/sessionStore.ts';
 const VIEW_OPTIONS = [
   { id: 'lateral', label: 'Vista lateral (recomendada)', available: true },
   { id: 'frontal', label: 'Vista frontal (análisis avanzado)', available: true },
-  { id: 'dual', label: 'Análisis dual (próximamente)', available: false },
+  { id: 'dual', label: 'Análisis dual (lateral + frontal secuencial)', available: true },
 ] as const;
 
 type ViewOptionId = (typeof VIEW_OPTIONS)[number]['id'];
@@ -48,7 +48,7 @@ export const StartScreen = () => {
 
       <section className="card">
         <h2>Selecciona la vista</h2>
-        <div className="button-row">
+        <div className="button-row button-row--stack-mobile">
           {VIEW_OPTIONS.map((option) => (
             <button
               key={option.id}
@@ -62,6 +62,17 @@ export const StartScreen = () => {
           ))}
         </div>
         <p className="helper-text">Vista lateral: análisis sagital básico. Vista frontal: análisis coronal avanzado con compensaciones.</p>
+        {selectedView === 'dual' && (
+          <>
+            <p className="helper-text">
+              En modo dual primero capturas lateral y, al terminar resultados, podrás capturar una segunda toma frontal
+              complementaria.
+            </p>
+            <p className="helper-text helper-text--requirement">
+              Válida únicamente en PC con uso de dos webcams (no compatible con móviles).
+            </p>
+          </>
+        )}
       </section>
 
       <section className="card">
@@ -71,13 +82,13 @@ export const StartScreen = () => {
             <li key={item}>{item}</li>
           ))}
         </ul>
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+        <label className="touch-checkbox-label">
           <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
           <span>Acepto procesar el video solo en el dispositivo y entiendo que no se guardan diagnósticos definitivos.</span>
         </label>
       </section>
 
-      <div className="button-row">
+      <div className="button-row page-actions">
         <button type="button" className="secondary-button" onClick={() => navigate('/longitudinal')}>
           Análisis longitudinal
         </button>

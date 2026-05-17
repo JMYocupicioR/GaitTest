@@ -1,4 +1,7 @@
 import type { PoseFrame } from './poseEstimation.ts';
+import { smoothAngleSeries } from './signalProcessing.ts';
+import { averageCycles, extractCyclesFromAngleSeries } from './cycleNormalization.ts';
+import type { GaitCycle } from './advancedEventDetection.ts';
 import type {
   ViewMode,
   KinematicData,
@@ -87,14 +90,32 @@ export class KinematicAnalyzer {
     if (timestamps.length === 0) {
       return this.createEmptySeries();
     }
-    const velocity = this.calculateVelocity(angles, timestamps);
+    const sampleRateHz = this.estimateSampleRateHz(timestamps);
+    const smoothedAngles = smoothAngleSeries(angles, 6, sampleRateHz);
+    const velocity = this.calculateVelocity(smoothedAngles, timestamps);
     return {
       timestamps,
-      angles,
+      angles: smoothedAngles,
       frameIndices: indices,
       velocity: velocity,
       acceleration: this.calculateAcceleration(velocity, timestamps)
     };
+  }
+
+  private estimateSampleRateHz(timestamps: number[]): number {
+    if (timestamps.length < 2) return 30;
+    const deltas: number[] = [];
+    for (let i = 1; i < timestamps.length; i += 1) {
+      const delta = timestamps[i] - timestamps[i - 1];
+      if (delta > 0 && Number.isFinite(delta)) {
+        deltas.push(delta);
+      }
+    }
+
+    if (deltas.length === 0) return 30;
+    const meanDelta = deltas.reduce((sum, value) => sum + value, 0) / deltas.length;
+    if (meanDelta <= 0) return 30;
+    return Math.max(10, Math.min(120, 1 / meanDelta));
   }
 
   private static readonly VISIBILITY_THRESHOLD = 0.6;
@@ -331,7 +352,7 @@ export class KinematicAnalyzer {
       }
     };
   }
-  public generateKinematicSummary(kinematics: DetailedKinematics): KinematicSummary {
+  public generateKinematicSummary(kinematics: DetailedKinematics, cycles?: GaitCycle[]): KinematicSummary {
     const ankleStats = {
       left: this.getAngleStats(kinematics.ankle.left.dorsiplantarflexion),
       right: this.getAngleStats(kinematics.ankle.right.dorsiplantarflexion)
@@ -426,6 +447,7 @@ export class KinematicAnalyzer {
     };
 
     const kinematicData = this.buildKinematicData(kinematics);
+    this.attachNormalizedCycles(kinematicData, cycles);
     const deviations = this.identifyKinematicDeviations(ankleStats, kneeStats, hipStats, kinematicData);
     const kinematicQualityScore = this.calculateKinematicQualityScore(deviations);
 
@@ -695,7 +717,8 @@ export class KinematicAnalyzer {
       rom: stats.rom,
       mean: stats.mean,
       standardDeviation: stats.stdDev,
-      normalRange
+      normalRange,
+      normalizedCycles: null,
     };
     return {
       series: this.toKinematicTimeSeries(series),
@@ -718,7 +741,8 @@ export class KinematicAnalyzer {
       rom: stats.rom,
       mean: stats.mean,
       standardDeviation: stats.stdDev,
-      normalRange
+      normalRange,
+      normalizedCycles: null,
     };
     return {
       series: this.toKinematicTimeSeries(series),
@@ -734,6 +758,33 @@ export class KinematicAnalyzer {
       velocity: [...series.velocity],
       acceleration: [...series.acceleration]
     };
+  }
+
+  private attachNormalizedCycles(kinematicData: KinematicData, cycles?: GaitCycle[]): void {
+    if (!cycles || cycles.length === 0) {
+      return;
+    }
+    const attach = (
+      sideData: SideKinematicData | null | undefined,
+      foot: 'L' | 'R',
+    ): void => {
+      if (!sideData?.series || !sideData.summary) return;
+      const normalized = extractCyclesFromAngleSeries(sideData.series, cycles, foot, 101);
+      if (!normalized.length) return;
+      const stats = averageCycles(normalized);
+      sideData.summary.normalizedCycles = {
+        mean101: stats.mean,
+        sd101: stats.sd,
+        cycleCount: normalized.length,
+      };
+    };
+
+    attach(kinematicData.sagittal.hipFlexion?.left, 'L');
+    attach(kinematicData.sagittal.hipFlexion?.right, 'R');
+    attach(kinematicData.sagittal.kneeFlexion?.left, 'L');
+    attach(kinematicData.sagittal.kneeFlexion?.right, 'R');
+    attach(kinematicData.sagittal.ankleFlexion?.left, 'L');
+    attach(kinematicData.sagittal.ankleFlexion?.right, 'R');
   }
 
   private createMoment(

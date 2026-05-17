@@ -12,6 +12,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 // Database types based on the CSV structure
 export interface GaitAnalysisRecord {
   id?: string;
+  user_id: string;
   patient_id: string;
   exam_id: string;
   side: 'L' | 'R';
@@ -42,6 +43,7 @@ export interface GaitAnalysisRecord {
   speed_norm?: number;
   step_len_norm?: number;
   cadence_norm?: number;
+  data_source?: 'measured' | 'estimated';
 
   // Metadata
   created_at?: string;
@@ -51,6 +53,7 @@ export interface GaitAnalysisRecord {
 // Complete session data for longitudinal analysis
 export interface SessionRecord {
   id?: string;
+  user_id: string;
   patient_id: string;
   exam_id: string;
   session_date: string;
@@ -84,6 +87,29 @@ export interface SessionRecord {
 
   created_at?: string;
   updated_at?: string;
+}
+
+export interface GaitKinematicSeriesRecord {
+  id?: string;
+  user_id: string;
+  patient_id: string;
+  exam_id: string;
+  joint: 'hip_flex' | 'knee_flex' | 'ankle_flex';
+  side: 'L' | 'R';
+  percent_cycle: number[];
+  created_at?: string;
+}
+
+export interface GaitKeyFrameRecord {
+  id?: string;
+  user_id: string;
+  exam_id: string;
+  event_type: string;
+  foot: 'L' | 'R';
+  timestamp_sec: number;
+  landmark_snapshot: unknown;
+  thumbnail_path?: string;
+  created_at?: string;
 }
 
 // SQL for creating the tables
@@ -121,6 +147,7 @@ CREATE TABLE IF NOT EXISTS gait_analysis_records (
   speed_norm DECIMAL,
   step_len_norm DECIMAL,
   cadence_norm DECIMAL,
+  data_source TEXT,
 
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -161,6 +188,7 @@ CREATE TABLE IF NOT EXISTS session_records (
   patient_age INTEGER,
   patient_height DECIMAL,
   patient_weight DECIMAL,
+  video_url TEXT,
 
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

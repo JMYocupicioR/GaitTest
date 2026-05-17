@@ -6,26 +6,62 @@ export interface UsePoseEstimationOptions {
   onHeelStrike?: (event: HeelStrikeEvent) => void;
   onPoseDetected?: (frame: PoseFrame) => void;
   autoStart?: boolean;
+  /** Tiempo en segundos alineado con el video / grabación (prioridad sobre reloj del sistema). */
+  getFrameTimestampSeconds?: () => number | null;
 }
 
 export const usePoseEstimation = (options: UsePoseEstimationOptions = {}) => {
   const analyzerRef = useRef<PoseGaitAnalyzer | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const isInitializedRef = useRef(false);
+  const workerRef = useRef<Worker | null>(null);
+  const workerUnsupportedRef = useRef(false);
+  const getTsRef = useRef(options.getFrameTimestampSeconds);
+  getTsRef.current = options.getFrameTimestampSeconds;
+  const onHeelRef = useRef(options.onHeelStrike);
+  onHeelRef.current = options.onHeelStrike;
+  const onPoseRef = useRef(options.onPoseDetected);
+  onPoseRef.current = options.onPoseDetected;
 
   const initialize = useCallback(async (videoElement: HTMLVideoElement) => {
     if (isInitializedRef.current) return;
 
+    function wireCallbacks(analyzer: PoseGaitAnalyzer): void {
+      analyzer.setLiveTimestampProvider(() => {
+        const fn = getTsRef.current;
+        const t = fn?.();
+        return t != null && Number.isFinite(t) ? t : null;
+      });
+      analyzer.setHeelStrikeCallback((e) => {
+        onHeelRef.current?.(e);
+      });
+      analyzer.setPoseCallback((f) => {
+        onPoseRef.current?.(f);
+      });
+    }
+
     try {
+      if (!workerRef.current && !workerUnsupportedRef.current && typeof Worker !== 'undefined') {
+        try {
+          const worker = new Worker(new URL('../workers/livePose.worker.ts', import.meta.url), {
+            type: 'module',
+          });
+          worker.onmessage = (event: MessageEvent<{ type?: string }>) => {
+            if (event.data?.type === 'unsupported') {
+              workerUnsupportedRef.current = true;
+              worker.terminate();
+              workerRef.current = null;
+            }
+          };
+          worker.postMessage({ type: 'init' });
+          workerRef.current = worker;
+        } catch {
+          workerUnsupportedRef.current = true;
+        }
+      }
+
       analyzerRef.current = new PoseGaitAnalyzer();
-
-      if (options.onHeelStrike) {
-        analyzerRef.current.setHeelStrikeCallback(options.onHeelStrike);
-      }
-
-      if (options.onPoseDetected) {
-        analyzerRef.current.setPoseCallback(options.onPoseDetected);
-      }
+      wireCallbacks(analyzerRef.current);
 
       await analyzerRef.current.initializeCamera(videoElement);
       videoRef.current = videoElement;
@@ -38,7 +74,7 @@ export const usePoseEstimation = (options: UsePoseEstimationOptions = {}) => {
       console.error('Failed to initialize pose estimation:', error);
       throw error;
     }
-  }, [options.onHeelStrike, options.onPoseDetected, options.autoStart]);
+  }, [options.autoStart]);
 
   const startAnalysis = useCallback(() => {
     if (analyzerRef.current && isInitializedRef.current) {
@@ -73,6 +109,8 @@ export const usePoseEstimation = (options: UsePoseEstimationOptions = {}) => {
     analyzerRef.current = null;
     videoRef.current = null;
     isInitializedRef.current = false;
+    workerRef.current?.terminate();
+    workerRef.current = null;
   }, []);
 
   useEffect(() => {
